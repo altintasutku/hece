@@ -1,7 +1,8 @@
 //! Vocabulary file parsing and budgeted Whisper prompt rendering.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::LazyLock};
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::text::fold;
@@ -18,14 +19,15 @@ pub const DEFAULT_PROMPT_PREFIX: &str = "Vocabulary: ";
 /// Ordered list of custom terms; earlier terms have higher priority.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Vocabulary {
-    /// Terms in priority order.
+    /// Terms in priority order. Expected to come from [`Vocabulary::parse`] (already
+    /// cleaned); constructing this directly or via `Deserialize` bypasses [`clean_term`].
     pub terms: Vec<String>,
 }
 
 /// Cleans a raw term; `None` if it is not a usable vocabulary term.
 #[must_use]
 pub fn clean_term(raw: &str) -> Option<String> {
-    let visible: String = raw.chars().filter(|c| !is_invisible(*c)).collect();
+    let visible = INVISIBLE.replace_all(raw, "");
     let collapsed = visible.split_whitespace().collect::<Vec<_>>().join(" ");
     let term = collapsed.trim_matches(EDGE_CHARS);
     let valid = !term.is_empty()
@@ -39,13 +41,28 @@ const EDGE_CHARS: &[char] = &[
     ' ', ',', '.', ';', ':', '!', '?', '"', '\'', '\u{201C}', '\u{201D}', '(', ')', '[', ']',
 ];
 
-/// Control and format characters that must never reach a prompt.
-fn is_invisible(c: char) -> bool {
-    c.is_control()
-        || matches!(
-            c,
-            '\u{00AD}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{FEFF}'
-        )
+/// Every Unicode general category C char (control, format, surrogate, private use, unassigned).
+#[expect(
+    clippy::expect_used,
+    reason = "static regex built from a literal; invalid literal is a programmer error"
+)]
+static INVISIBLE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\p{C}").expect("valid regex literal"));
+
+/// Whether `c` ends a line in Python's `str.splitlines()`.
+fn is_line_break(c: char) -> bool {
+    matches!(
+        c,
+        '\n' | '\r'
+            | '\u{0B}'
+            | '\u{0C}'
+            | '\u{1C}'
+            | '\u{1D}'
+            | '\u{1E}'
+            | '\u{85}'
+            | '\u{2028}'
+            | '\u{2029}'
+    )
 }
 
 /// Strips one leading `-`, `*` or `+` bullet followed by whitespace.
@@ -63,7 +80,7 @@ impl Vocabulary {
     pub fn parse(text: &str) -> Vocabulary {
         let mut candidates: Vec<(String, String)> = Vec::new();
         let mut excluded: HashSet<String> = HashSet::new();
-        for line in text.lines() {
+        for line in text.split(is_line_break) {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
                 continue;
@@ -201,7 +218,37 @@ mod tests {
         let prompt = vocab
             .whisper_prompt(DEFAULT_PROMPT_PREFIX, &count, 10_000)
             .unwrap();
-        assert!(format!(" {prompt}").len() <= MAX_PROMPT_TOKENS);
-        assert!(prompt.len() > 150);
+        let len = format!(" {prompt}").len();
+        // Each term adds 9 bytes, so a correct clamp lands in 215..=223.
+        assert!(len <= MAX_PROMPT_TOKENS, "len {len}");
+        assert!(len > 214, "len {len}");
+    }
+
+    #[test]
+    fn clean_term_drops_all_format_and_tag_chars() {
+        assert_eq!(clean_term("Ru\u{2066}st").as_deref(), Some("Rust"));
+        assert_eq!(clean_term("Rust\u{E0041}").as_deref(), Some("Rust"));
+        assert_eq!(clean_term("Ru\u{00AD}st").as_deref(), Some("Rust"));
+        assert_eq!(clean_term("Ru\u{200B}st").as_deref(), Some("Rust"));
+        assert_eq!(clean_term("Ru\tst").as_deref(), Some("Rust"));
+    }
+
+    #[test]
+    fn parse_splits_like_python_splitlines() {
+        for input in [
+            "Rust\rTauri",
+            "Rust\u{2028}Tauri",
+            "Rust\r\nTauri",
+            "Rust\u{85}Tauri",
+            "Rust\u{0B}Tauri",
+            "Rust\u{1C}Tauri",
+            "Rust\u{2029}Tauri",
+        ] {
+            assert_eq!(
+                Vocabulary::parse(input).terms,
+                ["Rust", "Tauri"],
+                "{input:?}"
+            );
+        }
     }
 }

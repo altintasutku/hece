@@ -12,11 +12,11 @@ pub fn is_low_confidence(kept: &[Segment]) -> bool {
     if kept.is_empty() {
         return false;
     }
-    let (sum, weights) = kept.iter().fold((0.0_f32, 0.0_f32), |(sum, weights), s| {
-        let w = s.duration_s().max(0.01);
-        (s.avg_logprob.mul_add(w, sum), weights + w)
+    let (sum, weights) = kept.iter().fold((0.0_f64, 0.0_f64), |(sum, weights), s| {
+        let w = f64::from(s.duration_s().max(0.01));
+        (f64::from(s.avg_logprob).mul_add(w, sum), weights + w)
     });
-    sum / weights < LOW_CONFIDENCE_LOGPROB
+    sum / weights < f64::from(LOW_CONFIDENCE_LOGPROB)
 }
 
 #[cfg(test)]

@@ -14,9 +14,13 @@ use crate::text::fold;
 /// Why a cleaned text was rejected. Carries no text, so it is safe to log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RejectReason {
+    /// The cleaned text has no letters or digits while the raw text does.
     Empty,
+    /// The cleaned text has fewer negation tokens than the raw text.
     NegationDropped,
+    /// The cleaned text is sharply shorter than the raw text.
     TooShort,
+    /// The cleaned text is sharply longer than the raw text.
     TooLong,
 }
 
@@ -33,9 +37,12 @@ impl RejectReason {
     }
 }
 
+/// Outcome of [`cleanup_guard`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuardVerdict {
+    /// The cleaned text may replace the raw transcript.
     Accept,
+    /// The cleaned text must be discarded and the raw text inserted instead.
     Reject(RejectReason),
 }
 
@@ -58,7 +65,22 @@ fn is_negation(token: &str) -> bool {
         || token.starts_with("yok")
         || token.ends_with("n't")
         || token.ends_with("n’t")
-        || matches!(token, "hayir" | "not" | "no" | "never" | "cannot")
+        || token.starts_with("hic")
+        || matches!(
+            token,
+            "hayir"
+                | "asla"
+                | "not"
+                | "no"
+                | "never"
+                | "cannot"
+                | "nothing"
+                | "nobody"
+                | "none"
+                | "neither"
+                | "nor"
+                | "without"
+        )
 }
 
 fn negation_count(text: &str) -> usize {
@@ -76,8 +98,11 @@ fn letter_count(text: &str) -> usize {
 /// Decides whether the LLM-cleaned text may replace the raw transcript.
 ///
 /// Checks, in order: empty output, dropped negations, too short, too long. Only
-/// Turkish word-level negation (`değil`, `yok…`, `hayır`) and English negations are
-/// detected; Turkish verb negation (`-me/-ma`) is out of scope.
+/// Turkish word-level negation (`değil…`, `yok…`, `hiç…`, `hayır`, `asla`) and English
+/// negations (`not`, `no`, `never`, `cannot`, `n't`, `nothing`, `nobody`, `none`,
+/// `neither`, `nor`, `without`) are detected; Turkish verb negation (`-me/-ma`) is out
+/// of scope. The `yok` and `hic` prefixes also match some non-negations (e.g. `yoksa`,
+/// `hiciv`); this errs on the safe side, since a rejection just inserts the raw text.
 #[must_use]
 pub fn cleanup_guard(raw: &str, cleaned: &str) -> GuardVerdict {
     let raw_letters = letter_count(raw);
@@ -112,10 +137,6 @@ pub fn cleanup_guard(raw: &str, cleaned: &str) -> GuardVerdict {
 mod tests {
     use super::*;
 
-    fn reject(raw: &str, cleaned: &str) -> GuardVerdict {
-        cleanup_guard(raw, cleaned)
-    }
-
     #[test]
     fn accepts_minimal_cleanup() {
         assert_eq!(
@@ -139,10 +160,15 @@ mod tests {
             ("I don't agree", "I agree"),
             ("never push to main", "push to main"),
             ("değil değil", "değil"),
+            ("ben değilim", "ben"),
+            ("I don\u{2019}t agree", "I agree"),
+            ("bunu asla yapma", "bunu yapma"),
+            ("hiçbir şey olmadı", "bir şey olmadı"),
+            ("nothing changed here", "changed here"),
         ];
         for (raw, cleaned) in cases {
             assert_eq!(
-                reject(raw, cleaned),
+                cleanup_guard(raw, cleaned),
                 GuardVerdict::Reject(RejectReason::NegationDropped),
                 "{raw:?} -> {cleaned:?}"
             );

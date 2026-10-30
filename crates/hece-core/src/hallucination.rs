@@ -179,6 +179,23 @@ mod tests {
     }
 
     #[test]
+    fn multiline_annotation_is_dropped() {
+        assert!(is_known_hallucination(" [Music\nplaying]"));
+    }
+
+    #[test]
+    fn mixed_list_drops_short_no_speech_segment() {
+        let f = filter_segments(vec![
+            seg(" Merhaba dünya.", 0.0, -0.1, 0.0, 1.0),
+            seg(" evet tamam", 0.8, -0.1, 1.0, 2.0),
+            seg(" Nasılsın?", 0.1, -0.1, 2.0, 3.0),
+        ]);
+        assert_eq!(f.text, "Merhaba dünya. Nasılsın?");
+        assert_eq!(f.dropped, 1);
+        assert_eq!(f.kept.len(), 2);
+    }
+
+    #[test]
     fn mixed_list_joins_kept_text() {
         let f = filter_segments(vec![
             seg(" Merhaba dünya.", 0.0, -0.1, 0.0, 1.0),

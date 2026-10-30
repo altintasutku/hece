@@ -26,6 +26,9 @@ pub fn fold(text: &str) -> String {
 }
 
 /// Builds a matching key: folds, turns punctuation and `_` runs into single spaces.
+///
+/// Rust's Unicode `\w` treats ZWJ/ZWNJ (`Join_Control`) as word chars, unlike Python;
+/// accepted.
 #[must_use]
 pub fn normalize(text: &str) -> String {
     let folded = fold(text);

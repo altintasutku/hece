@@ -14,6 +14,7 @@ publish = false
 # FFI wrapper modules may `#[allow(unsafe_code, reason = "...")]` with a justifying reason.
 unsafe_code = "deny"
 missing_debug_implementations = "warn"
+missing_docs = "warn"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

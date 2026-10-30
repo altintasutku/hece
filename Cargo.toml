@@ -58,3 +58,5 @@ hound = "3.5.1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "env-filter", "ansi"] }
 tokio = { version = "1.54.1", features = ["net", "process", "time", "io-util", "sync", "macros", "rt-multi-thread"] }
+anyhow = "1.0.104"
+clap = { version = "4.6.0", features = ["derive"] }

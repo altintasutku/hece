@@ -22,7 +22,7 @@ use hece_core::ipc::{
 use hece_engine::engine::ComputeKind;
 use hece_engine::error::EngineError;
 use hece_engine::server::{Backend, ServeArgs, serve};
-use hece_engine::socket::{BindError, bind};
+use hece_engine::socket::{BindError, Bound, bind, socket_path_from};
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -34,6 +34,8 @@ impl TempDir {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let dir = std::env::temp_dir().join(format!("hece-t-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        // bind() rejects group/world accessible directories.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
         Self(dir)
     }
 
@@ -90,8 +92,9 @@ impl Backend for Fake {
 type ServeHandle = JoinHandle<(Result<(), EngineError>, Instant)>;
 
 fn start(dir: &TempDir, fake: Fake, ttl: Duration) -> ServeHandle {
-    let listener = bind(&dir.sock()).unwrap();
+    let Bound { listener, lock } = bind(&dir.sock()).unwrap();
     thread::spawn(move || {
+        let _lock = lock;
         let mut fake = fake;
         let res = serve(listener, &mut fake, ttl);
         (res, Instant::now())
@@ -279,6 +282,93 @@ fn oversized_frame_is_rejected_and_server_survives() {
 }
 
 #[test]
+fn oversized_frame_with_a_real_body_still_gets_the_error() {
+    let dir = TempDir::new();
+    let handle = start(&dir, Fake::default(), LONG);
+    let mut s = connect(&dir);
+    s.set_write_timeout(Some(Duration::from_secs(10))).unwrap();
+    let total = 70 * 1024 * 1024;
+    let mut writer = s.try_clone().unwrap();
+    let sender = thread::spawn(move || {
+        let header = u32::try_from(total).unwrap().to_be_bytes();
+        writer.write_all(&header).unwrap();
+        let chunk = vec![b'x'; 1024 * 1024];
+        for _ in 0..70 {
+            writer.write_all(&chunk).unwrap();
+        }
+    });
+    sender.join().unwrap();
+    assert_eq!(
+        recv(&mut s),
+        Response::Error {
+            code: "frame_too_large".to_owned()
+        }
+    );
+    drop(s);
+    shutdown(&dir, handle);
+}
+
+#[test]
+fn truncated_body_closes_the_connection_and_server_survives() {
+    let dir = TempDir::new();
+    let handle = start(&dir, Fake::default(), LONG);
+    let mut s = connect(&dir);
+    s.write_all(&100u32.to_be_bytes()).unwrap();
+    s.write_all(b"0123456789").unwrap();
+    s.shutdown(std::net::Shutdown::Write).unwrap();
+    let mut rest = Vec::new();
+    s.read_to_end(&mut rest).unwrap();
+    assert_eq!(rest, [] as [u8; 0]);
+    let mut s2 = connect(&dir);
+    send(&mut s2, &Request::Hello);
+    assert!(matches!(recv(&mut s2), Response::Hello { .. }));
+    drop(s2);
+    shutdown(&dir, handle);
+}
+
+#[test]
+fn transcribe_with_unknown_compute_is_bad_compute() {
+    let dir = TempDir::new();
+    let handle = start(&dir, Fake::default(), LONG);
+    let mut s = connect(&dir);
+    let Request::Transcribe(mut req) = transcribe_req(&[1]) else {
+        unreachable!()
+    };
+    req.compute = "bf16".to_owned();
+    send(&mut s, &Request::Transcribe(req));
+    assert_eq!(
+        recv(&mut s),
+        Response::Error {
+            code: "bad_compute".to_owned()
+        }
+    );
+    drop(s);
+    shutdown(&dir, handle);
+}
+
+#[test]
+fn socket_path_needs_a_runtime_dir() {
+    assert_eq!(socket_path_from(None).unwrap_err().code(), "no_runtime_dir");
+    assert_eq!(
+        socket_path_from(Some(std::ffi::OsString::new()))
+            .unwrap_err()
+            .code(),
+        "no_runtime_dir"
+    );
+    assert_eq!(
+        socket_path_from(Some("/run/user/1".into())).unwrap(),
+        PathBuf::from("/run/user/1/hece/engine.sock")
+    );
+}
+
+#[test]
+fn bind_rejects_an_insecure_existing_directory() {
+    let dir = TempDir::new();
+    std::fs::set_permissions(&dir.0, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(matches!(bind(&dir.sock()), Err(BindError::Io(_))));
+}
+
+#[test]
 fn invalid_json_is_rejected_and_server_survives() {
     let dir = TempDir::new();
     let handle = start(&dir, Fake::default(), LONG);
@@ -384,4 +474,5 @@ fn serve_args_parse() {
     assert!(args(&["--idle-ttl-secs", "x"]).is_err());
     assert!(args(&["--socket"]).is_err());
     assert!(args(&["--bogus"]).is_err());
+    assert!(args(&["--idle-ttl-secs", "0"]).is_err());
 }

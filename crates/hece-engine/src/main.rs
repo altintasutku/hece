@@ -52,8 +52,8 @@ fn main() -> ExitCode {
             }
         },
     };
-    let listener = match bind(&path) {
-        Ok(l) => l,
+    let bound = match bind(&path) {
+        Ok(b) => b,
         Err(BindError::AlreadyRunning) => {
             output::error("hece-engine: another worker is already running (already_running)");
             return ExitCode::from(3);
@@ -70,7 +70,7 @@ fn main() -> ExitCode {
         "engine.start"
     );
     let mut backend = CudaBackend::new();
-    let result = serve(listener, &mut backend, serve_args.idle_ttl);
+    let result = serve(bound.listener, &mut backend, serve_args.idle_ttl);
     // Leave no stale file behind on a normal exit.
     let _ = std::fs::remove_file(&path);
     match result {

@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::io::{ErrorKind, Read, Write};
+use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -26,8 +27,12 @@ const READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// Pause between accept polls while idle.
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 /// Default idle time before the worker exits.
-pub const DEFAULT_IDLE_TTL: Duration = Duration::from_mins(15);
+pub const DEFAULT_IDLE_TTL: Duration = Duration::from_mins(30);
 /// Rendered prompts kept before the cache is emptied.
+/// Most bytes read from a client after rejecting an oversized frame.
+const DRAIN_LIMIT: usize = 128 * 1024 * 1024;
+/// Longest time spent draining such a client.
+const DRAIN_TIME: Duration = Duration::from_secs(2);
 const PROMPT_CACHE_LIMIT: usize = 64;
 
 /// A speech-to-text engine the server can drive.
@@ -200,7 +205,11 @@ impl ServeArgs {
             match flag.as_str() {
                 "--socket" => socket = Some(PathBuf::from(value)),
                 "--idle-ttl-secs" => {
-                    idle_ttl = Duration::from_secs(value.parse().map_err(|_| ArgsError)?);
+                    let secs: u64 = value.parse().map_err(|_| ArgsError)?;
+                    if secs == 0 {
+                        return Err(ArgsError);
+                    }
+                    idle_ttl = Duration::from_secs(secs);
                 }
                 _ => return Err(ArgsError),
             }
@@ -244,17 +253,15 @@ pub fn serve<B: Backend>(
                 if let Closed::Shutdown = handle_connection(stream, backend, &mut last_activity) {
                     return Ok(());
                 }
-                last_activity = Instant::now();
             }
-            Err(e) if e.kind() == ErrorKind::WouldBlock => {
+            Err(e) => {
+                if e.kind() != ErrorKind::WouldBlock {
+                    tracing::warn!(kind = ?e.kind(), "engine.accept_failed");
+                }
                 if last_activity.elapsed() >= idle_ttl {
                     tracing::info!("engine.idle_exit");
                     return Ok(());
                 }
-                std::thread::sleep(POLL_INTERVAL);
-            }
-            Err(e) => {
-                tracing::warn!(kind = ?e.kind(), "engine.accept_failed");
                 std::thread::sleep(POLL_INTERVAL);
             }
         }
@@ -280,6 +287,9 @@ fn handle_connection<B: Backend>(
                 tracing::warn!(code = e.code(), "engine.bad_frame");
                 // Best effort: the peer may already be gone.
                 let _ = write_response(&mut stream, &error_response(e.code()));
+                if let IpcError::FrameTooLarge(announced) = e {
+                    drain_and_close(&mut stream, announced);
+                }
                 return Closed::Done;
             }
         };
@@ -294,26 +304,51 @@ fn handle_connection<B: Backend>(
     }
 }
 
+/// Lets a client that is still sending an oversized frame finish, so it reads our error
+/// instead of a connection reset. Bounded in bytes and time.
+fn drain_and_close(stream: &mut UnixStream, announced: usize) {
+    let _ = stream.shutdown(Shutdown::Write);
+    let deadline = Instant::now() + DRAIN_TIME;
+    let mut remaining = announced.min(DRAIN_LIMIT);
+    let mut buf = vec![0u8; 64 * 1024];
+    while remaining > 0 {
+        let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+            break;
+        };
+        if stream.set_read_timeout(Some(left)).is_err() {
+            break;
+        }
+        let want = remaining.min(buf.len());
+        match stream.read(&mut buf[..want]) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => remaining -= n,
+        }
+    }
+}
+
 /// Reads one request. `Ok(None)` is a clean end of the connection (EOF or idle timeout).
 fn read_request(stream: &mut UnixStream) -> Result<Option<Request>, IpcError> {
     let mut header = [0u8; 4];
-    match stream.read_exact(&mut header) {
-        Ok(()) => {}
-        Err(e)
-            if matches!(
-                e.kind(),
-                ErrorKind::UnexpectedEof | ErrorKind::WouldBlock | ErrorKind::TimedOut
-            ) =>
-        {
-            return Ok(None);
+    if let Err(e) = stream.read_exact(&mut header) {
+        // EOF and idle timeout end the connection quietly; anything else is worth a trace.
+        if !matches!(
+            e.kind(),
+            ErrorKind::UnexpectedEof | ErrorKind::WouldBlock | ErrorKind::TimedOut
+        ) {
+            tracing::debug!(kind = ?e.kind(), "engine.header_read_failed");
         }
-        Err(_) => return Ok(None),
+        return Ok(None);
     }
     let len = frame_len(header)?;
     // `take` + `read_to_end` grows with the data actually sent instead of trusting the header.
     let mut body = Vec::new();
     let read = stream.take(len as u64).read_to_end(&mut body);
-    if read.is_err() || body.len() != len {
+    if let Err(e) = &read {
+        tracing::debug!(kind = ?e.kind(), announced = len, got = body.len(), "engine.body_read_failed");
+        return Ok(None);
+    }
+    if body.len() != len {
+        tracing::debug!(announced = len, got = body.len(), "engine.short_body");
         return Ok(None);
     }
     decode_body(&body).map(Some)

@@ -4,3 +4,4 @@
 pub mod audio;
 pub mod error;
 pub mod mel;
+pub mod vad;

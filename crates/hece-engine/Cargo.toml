@@ -18,4 +18,8 @@ workspace = true
 hece-core = { path = "../hece-core" }
 thiserror.workspace = true
 rustfft.workspace = true
+ort.workspace = true
 ct2rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true

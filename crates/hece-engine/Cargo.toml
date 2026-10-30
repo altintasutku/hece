@@ -9,7 +9,13 @@ repository.workspace = true
 publish.workspace = true
 
 [features]
-cuda = []
+cuda = ["dep:ct2rs"]
 
 [lints]
 workspace = true
+
+[dependencies]
+hece-core = { path = "../hece-core" }
+thiserror.workspace = true
+rustfft.workspace = true
+ct2rs = { workspace = true, optional = true }

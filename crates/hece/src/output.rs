@@ -5,23 +5,32 @@
     reason = "user-facing CLI output"
 )]
 
+use std::io::Write;
+
 use hece_core::metrics::{LongReport, ShortReport};
 
 fn pct(v: f64) -> String {
     format!("{:.1}%", v * 100.0)
 }
 
-/// One table row; columns line up under [`header_line`].
+/// One table row; columns line up under [`header_line`]. A set with no scored file shows
+/// `n/a` for the averaged columns.
 pub fn format_row(set: &str, r: &ShortReport) -> String {
+    let na = || "n/a".to_owned();
+    let scored = r.files > 0;
+    let (wer, cer, names, utt) = if scored {
+        (
+            pct(r.wer),
+            pct(r.cer),
+            format!("{}/{}", r.names_hit, r.names_total),
+            format!("{:.2}", r.seconds_per_utterance),
+        )
+    } else {
+        (na(), na(), na(), na())
+    };
     format!(
-        "{set:<6}{:>5}{:>8}{:>9}{:>9}{:>8}{:>10}{:>8.2}",
-        r.files,
-        r.failed,
-        pct(r.wer),
-        pct(r.cer),
-        format!("{}/{}", r.names_hit, r.names_total),
-        r.invented,
-        r.seconds_per_utterance,
+        "{set:<6}{:>5}{:>8}{wer:>9}{cer:>9}{names:>8}{:>10}{utt:>8}",
+        r.files, r.failed, r.invented,
     )
 }
 
@@ -47,9 +56,12 @@ pub fn format_long_lines(r: &LongReport, short_wer: Option<f64>) -> Vec<String> 
     ]
 }
 
-/// Prints a line to stdout.
+/// Prints a line to stdout. A closed pipe (e.g. `| head`) ends the process cleanly.
 pub fn line(text: &str) {
-    println!("{text}");
+    let mut out = std::io::stdout().lock();
+    if let Err(e) = writeln!(out, "{text}") {
+        std::process::exit(i32::from(e.kind() != std::io::ErrorKind::BrokenPipe));
+    }
 }
 
 /// Prints an error line to stderr.
@@ -57,10 +69,33 @@ pub fn error(text: &str) {
     eprintln!("error: {text}");
 }
 
+/// Reports one failed file: its name and a stable code, never any text.
+pub fn failure(file: &str, code: &str) {
+    eprintln!("failed {file} {code}");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use hece_core::metrics::ShortReport;
+
+    #[test]
+    fn empty_set_shows_na() {
+        let r = ShortReport {
+            files: 0,
+            failed: 3,
+            wer: 0.0,
+            cer: 0.0,
+            names_hit: 0,
+            names_total: 0,
+            invented: 0,
+            seconds_per_utterance: 0.0,
+        };
+        assert_eq!(
+            format_row("long", &r),
+            "long      0       3      n/a      n/a     n/a         0     n/a"
+        );
+    }
 
     #[test]
     fn short_row_is_stable() {

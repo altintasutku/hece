@@ -7,7 +7,7 @@ use hece_core::DEFAULT_PROMPT_TOKENS;
 
 /// Hece voice dictation.
 #[derive(Debug, Parser)]
-#[command(name = "hece", version, about)]
+#[command(name = "hece", version, about, arg_required_else_help = true)]
 pub struct Cli {
     /// Subcommand to run.
     #[command(subcommand)]
@@ -18,6 +18,9 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Measure transcription quality on a directory of recordings with references.
+    ///
+    /// Exits with status 1 if any file failed (after printing the table); failed files are
+    /// listed on stderr as `failed <file> <code>`.
     Bench(BenchArgs),
 }
 

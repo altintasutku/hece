@@ -13,7 +13,8 @@ use crate::cli::{Cli, Command};
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match run(cli) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::SUCCESS,
+        Ok(true) => ExitCode::FAILURE,
         Err(e) => {
             output::error(&format!("{e:#}"));
             ExitCode::FAILURE
@@ -21,7 +22,8 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(cli: Cli) -> anyhow::Result<()> {
+/// Returns whether any file failed.
+fn run(cli: Cli) -> anyhow::Result<bool> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;

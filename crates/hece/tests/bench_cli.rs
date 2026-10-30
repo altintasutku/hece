@@ -21,7 +21,7 @@ fn bench_on_missing_dir_fails_before_starting_the_engine() {
 #[test]
 fn no_subcommand_prints_help() {
     let out = hece().output().unwrap();
-    assert!(!out.status.success());
+    assert_eq!(out.status.code(), Some(2));
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("bench"), "{err}");
 }

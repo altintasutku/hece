@@ -120,6 +120,7 @@ pub fn load_list(dir: &Path) -> Result<Vec<(PathBuf, String)>, BenchError> {
     let list = dir.join(LIST_FILE);
     let text =
         std::fs::read_to_string(&list).map_err(|_| BenchError::ListUnreadable(list.clone()))?;
+    let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
     let mut rows = Vec::new();
     for (idx, raw) in text.lines().enumerate() {
         let line = idx + 1;
@@ -153,39 +154,50 @@ pub fn load_list(dir: &Path) -> Result<Vec<(PathBuf, String)>, BenchError> {
     Ok(rows)
 }
 
-/// Transcribes every row in order; a failing file is counted and skipped. Returns the scored
-/// rows and the number of failures. Warm-up is the caller's job.
+/// Transcribes every row in order; a failing file is recorded as `(file name, code)` and
+/// skipped. Returns the scored rows and the failures. Warm-up is the caller's job.
 pub async fn run<T: Transcriber>(
     rows: &[(PathBuf, String)],
     transcriber: &T,
-) -> (Vec<Scored>, usize) {
+) -> (Vec<Scored>, Vec<(String, String)>) {
     let mut scored = Vec::with_capacity(rows.len());
-    let mut failed = 0;
+    let mut failures = Vec::new();
     for (path, reference) in rows {
+        let file = path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         let Ok(audio) = read_wav(path) else {
-            failed += 1;
+            failures.push((file, "bad_audio".to_owned()));
             continue;
         };
         let started = Instant::now();
         match transcriber.transcribe(&audio).await {
             Ok(hypothesis) => scored.push(Scored {
-                file: path
-                    .file_name()
-                    .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+                file,
                 reference: reference.clone(),
                 hypothesis,
                 seconds: started.elapsed().as_secs_f64(),
             }),
-            Err(_) => failed += 1,
+            Err(code) => failures.push((file, code)),
         }
     }
-    (scored, failed)
+    (scored, failures)
 }
 
 /// Runs `hece bench`: prepares both sets, warms the engine, scores, prints, shuts the worker down.
-pub async fn execute(args: &BenchArgs) -> anyhow::Result<()> {
+/// Returns whether any file failed.
+pub async fn execute(args: &BenchArgs) -> anyhow::Result<bool> {
     let terms = match &args.vocab {
-        Some(path) => Some(Vocabulary::parse(&std::fs::read_to_string(path)?)),
+        Some(path) => {
+            let text = std::fs::read_to_string(path).map_err(|e| {
+                anyhow::anyhow!(
+                    "cannot read vocabulary file {}: {:?}",
+                    path.display(),
+                    e.kind()
+                )
+            })?;
+            Some(Vocabulary::parse(&text))
+        }
         None => None,
     };
     let term_list = terms.as_ref().map_or_else(Vec::new, |v| v.terms.clone());
@@ -208,9 +220,9 @@ pub async fn execute(args: &BenchArgs) -> anyhow::Result<()> {
     .await;
     // Do not leave a loaded GPU worker behind for its idle TTL.
     let shutdown = client.shutdown().await;
-    outcome?;
+    let any_failed = outcome?;
     shutdown?;
-    Ok(())
+    Ok(any_failed)
 }
 
 async fn measure(
@@ -220,7 +232,7 @@ async fn measure(
     terms: &[String],
     main_rows: &[(PathBuf, String)],
     short_rows: Option<&[(PathBuf, String)]>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     let transcriber = EngineTranscriber {
         client,
         language: &args.language,
@@ -229,18 +241,27 @@ async fn measure(
         prompt_tokens: args.prompt_tokens,
     };
     client.prewarm().await?;
+    let mut any_failed = false;
+    let mut report_failures = |failures: &[(String, String)]| {
+        any_failed |= !failures.is_empty();
+        for (file, code) in failures {
+            output::failure(file, code);
+        }
+    };
 
     output::line(&output::header_line());
     if args.long {
         let short_report = match short_rows {
             Some(rows) => {
-                let (scored, failed) = run(rows, &transcriber).await;
-                Some(score_short(&scored, failed, terms))
+                let (scored, failures) = run(rows, &transcriber).await;
+                report_failures(&failures);
+                Some(score_short(&scored, failures.len(), terms))
             }
             None => None,
         };
-        let (scored, failed) = run(main_rows, &transcriber).await;
-        let report = score_long(&scored, failed, terms);
+        let (scored, failures) = run(main_rows, &transcriber).await;
+        report_failures(&failures);
+        let report = score_long(&scored, failures.len(), terms);
         if let Some(s) = &short_report {
             output::line(&output::format_row("short", s));
         }
@@ -249,13 +270,12 @@ async fn measure(
             output::line(&l);
         }
     } else {
-        let (scored, failed) = run(main_rows, &transcriber).await;
-        output::line(&output::format_row(
-            "short",
-            &score_short(&scored, failed, terms),
-        ));
+        let (scored, failures) = run(main_rows, &transcriber).await;
+        report_failures(&failures);
+        let report = score_short(&scored, failures.len(), terms);
+        output::line(&output::format_row("short", &report));
     }
-    Ok(())
+    Ok(any_failed)
 }
 
 #[cfg(test)]
@@ -325,6 +345,42 @@ mod tests {
     }
 
     #[test]
+    fn read_wav_rejects_float_and_24_bit() {
+        let dir = temp_dir();
+        let float = hound::WavSpec {
+            channels: 1,
+            sample_rate: 16_000,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        };
+        let mut w = hound::WavWriter::create(dir.join("f.wav"), float).unwrap();
+        w.write_sample(0.0f32).unwrap();
+        w.finalize().unwrap();
+        let deep = hound::WavSpec {
+            bits_per_sample: 24,
+            sample_format: hound::SampleFormat::Int,
+            ..float
+        };
+        let mut w = hound::WavWriter::create(dir.join("d.wav"), deep).unwrap();
+        w.write_sample(0i32).unwrap();
+        w.finalize().unwrap();
+        for name in ["f.wav", "d.wav"] {
+            assert!(matches!(
+                read_wav(&dir.join(name)),
+                Err(BenchError::WrongFormat(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn bom_in_list_is_ignored() {
+        let dir = temp_dir();
+        write_wav(&dir.join("a.wav"), 16_000, 1);
+        std::fs::write(dir.join(LIST_FILE), "\u{feff}a.wav\tsome text\n").unwrap();
+        assert_eq!(load_list(&dir).unwrap().len(), 1);
+    }
+
+    #[test]
     fn read_wav_accepts_16k_mono_and_rejects_others() {
         let dir = temp_dir();
         write_wav(&dir.join("ok.wav"), 16_000, 1);
@@ -365,8 +421,11 @@ mod tests {
             write_wav(&path, 16_000, 1);
             rows.push((path, "merhaba".to_owned()));
         }
-        let (scored, failed) = run(&rows, &FailSecond(AtomicUsize::new(0))).await;
-        assert_eq!(failed, 1);
+        let (scored, failures) = run(&rows, &FailSecond(AtomicUsize::new(0))).await;
+        assert_eq!(
+            failures,
+            vec![("b.wav".to_owned(), "engine_crashed".to_owned())]
+        );
         assert_eq!(scored.len(), 2);
         assert_eq!(scored[1].file, "c.wav");
     }

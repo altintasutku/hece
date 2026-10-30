@@ -316,8 +316,15 @@ fn deleted_runs_in(ops: &[AlignOp], min_len: usize) -> usize {
     runs + usize::from(passage >= min_len)
 }
 
+/// English `n't` contractions after normalization removed their apostrophe.
+const CONTRACTED_NEGATIONS: [&str; 18] = [
+    "dont", "doesnt", "didnt", "isnt", "arent", "wasnt", "werent", "cant", "couldnt", "wont",
+    "wouldnt", "shouldnt", "havent", "hasnt", "hadnt", "aint", "mustnt", "neednt",
+];
+
 fn is_negation_word(word: &str) -> bool {
-    is_negation_token(&fold(word))
+    let folded = fold(word);
+    is_negation_token(&folded) || CONTRACTED_NEGATIONS.contains(&folded.as_str())
 }
 
 /// Reference negation tokens that the alignment deletes or substitutes with a non-negation.
@@ -518,6 +525,12 @@ mod tests {
         assert_eq!(score_long(&rows, 0, &[]).dropped_negations, 1);
         let kept = vec![row("a", "bu doğru değil", "bu doğru değil")];
         assert_eq!(score_long(&kept, 0, &[]).dropped_negations, 0);
+    }
+
+    #[test]
+    fn dropped_english_contraction_counts() {
+        let rows = vec![row("a", "I don't agree with that", "I agree with that")];
+        assert_eq!(score_long(&rows, 0, &[]).dropped_negations, 1);
     }
 
     #[test]

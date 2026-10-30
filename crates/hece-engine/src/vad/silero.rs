@@ -2,6 +2,9 @@
 //!
 //! Ported from faster-whisper 1.2.1 (MIT), `vad.py` (`SileroVADModel`).
 
+use std::sync::Mutex;
+
+use ort::environment::Environment;
 use ort::ep;
 use ort::session::Session;
 use ort::value::Tensor;
@@ -22,6 +25,21 @@ fn vad_err(e: impl std::fmt::Display) -> EngineError {
     EngineError::Vad(e.to_string())
 }
 
+/// The process-wide ONNX Runtime environment. `ort` allows building only one per process (a
+/// second `build` fails even after the first is dropped), so every VAD shares this one.
+fn environment() -> Result<Environment, EngineError> {
+    static ENV: Mutex<Option<Environment>> = Mutex::new(None);
+    let mut env = ENV
+        .lock()
+        .map_err(|_| vad_err("onnx runtime environment lock poisoned"))?;
+    if let Some(env) = env.as_ref() {
+        return Ok(env.clone());
+    }
+    let built = ort::init().build().map_err(vad_err)?;
+    *env = Some(built.clone());
+    Ok(built)
+}
+
 /// The Silero VAD model. `Send`, so it can live in a worker thread; inference needs `&mut self`.
 pub struct SileroVad {
     session: Session,
@@ -35,11 +53,8 @@ impl std::fmt::Debug for SileroVad {
 
 impl SileroVad {
     /// Loads the embedded model with one intra- and one inter-op thread.
-    ///
-    /// Each call builds its own ONNX Runtime environment (cheap, reference counted); the VAD is
-    /// created once per engine, so no process-wide state is needed.
     pub fn new() -> Result<Self, EngineError> {
-        let env = ort::init().build().map_err(vad_err)?;
+        let env = environment()?;
         let session = Session::builder(&env)
             .map_err(vad_err)?
             // faster-whisper sets `enable_cpu_mem_arena = False`.
@@ -138,6 +153,16 @@ impl SileroVad {
 #[expect(clippy::cast_possible_truncation, reason = "fixture decoding in tests")]
 mod tests {
     use super::*;
+
+    #[test]
+    fn several_vads_can_exist_in_one_process() {
+        let first = SileroVad::new().unwrap();
+        let mut second = SileroVad::new().unwrap();
+        drop(first);
+        let mut third = SileroVad::new().unwrap();
+        assert!(second.speech_probs(&[0.0; 512]).is_ok());
+        assert!(third.speech_probs(&[0.0; 512]).is_ok());
+    }
 
     #[test]
     fn silero_vad_is_send() {

@@ -264,15 +264,43 @@ fn sentence_counts(text: &str) -> HashMap<String, usize> {
     counts
 }
 
-/// Counts distinct hypothesis sentences (at least four words) that occur more often in
-/// the hypothesis than in the reference.
+/// Counts distinct hypothesis sentences (at least four words) that occur at least twice in
+/// the hypothesis and more often than their word sequence occurs in the reference. The
+/// reference side is matched on normalized words, so it does not depend on its punctuation.
 #[must_use]
 pub fn repeated_sentences(r: &str, h: &str) -> usize {
-    let reference = sentence_counts(r);
+    let reference = normalize_words(r);
     sentence_counts(h)
         .into_iter()
-        .filter(|(s, n)| *n > reference.get(s).copied().unwrap_or(0))
+        .filter(|(sentence, n)| {
+            *n >= 2 && {
+                let needle: Vec<&str> = sentence.split(' ').collect();
+                *n > occurrences(&reference, &needle)
+            }
+        })
         .count()
+}
+
+/// Non-overlapping occurrences of `needle` as a contiguous word sequence in `words`.
+fn occurrences(words: &[String], needle: &[&str]) -> usize {
+    if needle.is_empty() || needle.len() > words.len() {
+        return 0;
+    }
+    let mut count = 0;
+    let mut i = 0;
+    while i + needle.len() <= words.len() {
+        if words[i..i + needle.len()]
+            .iter()
+            .zip(needle)
+            .all(|(w, n)| w == n)
+        {
+            count += 1;
+            i += needle.len();
+        } else {
+            i += 1;
+        }
+    }
+    count
 }
 
 #[cfg(test)]
@@ -379,6 +407,17 @@ mod tests {
         let h = format!("{s} {s} Başka bir cümle burada.");
         assert_eq!(repeated_sentences(&r, &h), 1);
         assert_eq!(repeated_sentences(&r, &r), 0);
+        // The reference's punctuation does not matter: same words, no full stops.
+        assert_eq!(
+            repeated_sentences(
+                "bu cümle dört kelime taşır ve biter",
+                &format!("{s} ve biter.")
+            ),
+            0
+        );
+        // A sentence said twice in the reference and twice in the hypothesis is not a repeat.
+        let twice = format!("{s} {s}");
+        assert_eq!(repeated_sentences(&twice.replace('.', ""), &twice), 0);
         // Sentences under four words never count.
         assert_eq!(repeated_sentences("tamam.", "tamam. tamam. tamam."), 0);
     }

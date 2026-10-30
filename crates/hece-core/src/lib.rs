@@ -1,10 +1,16 @@
 //! Pure, I/O-free logic shared by all Hece crates: vocabulary, hallucination filter,
 //! confidence, negation guard and shared types.
 
+pub mod confidence;
+pub mod hallucination;
 pub mod text;
 pub mod types;
 pub mod vocab;
 
+pub use confidence::{LOW_CONFIDENCE_LOGPROB, is_low_confidence};
+pub use hallucination::{
+    Filtered, NO_SPEECH_THRESHOLD, SHORT_SEGMENT_MAX_WORDS, filter_segments, is_known_hallucination,
+};
 pub use text::{fold, normalize};
 pub use types::{Segment, Transcript};
 pub use vocab::{

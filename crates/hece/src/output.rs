@@ -44,7 +44,8 @@ pub fn header_line() -> String {
 
 /// Extra lines of the long set; `short_wer` enables the delta line.
 pub fn format_long_lines(r: &LongReport, short_wer: Option<f64>) -> Vec<String> {
-    let delta = short_wer.map_or_else(
+    // No delta when either set scored nothing: a mean over zero files is not a WER.
+    let delta = short_wer.filter(|_| r.short.files > 0).map_or_else(
         || "n/a".to_owned(),
         |s| format!("{:+.1}%", (r.short.wer - s) * 100.0),
     );

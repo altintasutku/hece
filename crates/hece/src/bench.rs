@@ -266,7 +266,10 @@ async fn measure(
             output::line(&output::format_row("short", s));
         }
         output::line(&output::format_row("long", &report.short));
-        for l in output::format_long_lines(&report, short_report.as_ref().map(|s| s.wer)) {
+        for l in output::format_long_lines(
+            &report,
+            short_report.as_ref().filter(|s| s.files > 0).map(|s| s.wer),
+        ) {
             output::line(&l);
         }
     } else {

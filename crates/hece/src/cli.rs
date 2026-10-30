@@ -19,8 +19,13 @@ pub struct Cli {
 pub enum Command {
     /// Measure transcription quality on a directory of recordings with references.
     ///
-    /// Exits with status 1 if any file failed (after printing the table); failed files are
-    /// listed on stderr as `failed <file> <code>`.
+    /// Exit status: 0 ok; 1 some files failed (the table is still printed, and failed files
+    /// are listed on stderr as `failed <file> <code>`); 2 usage error; 3 setup or engine
+    /// error (bad list or audio, unreadable vocabulary, engine could not start or died).
+    ///
+    /// With `--long`, the dropped-negation count covers word-level negations only (değil,
+    /// yok, hayır, asla, hiç…, not, never, n't…); Turkish verb negation (-me/-ma) is not
+    /// detected.
     Bench(BenchArgs),
 }
 
@@ -51,7 +56,7 @@ pub struct BenchArgs {
     #[arg(long)]
     pub long: bool,
     /// Short-utterance set to run in the same invocation (for the WER delta of `--long`).
-    #[arg(long)]
+    #[arg(long, requires = "long")]
     pub short: Option<PathBuf>,
 }
 
@@ -70,6 +75,13 @@ mod tests {
         assert!(args.long);
         assert_eq!(args.short.as_deref(), Some(std::path::Path::new("s")));
         assert_eq!(args.prompt_tokens, 200);
+    }
+
+    #[test]
+    fn short_requires_long() {
+        assert!(
+            Cli::try_parse_from(["hece", "bench", "dir", "--model", "m", "--short", "s"]).is_err()
+        );
     }
 
     #[test]

@@ -12,7 +12,7 @@ pub mod types;
 pub mod vocab;
 
 pub use confidence::{LOW_CONFIDENCE_LOGPROB, is_low_confidence};
-pub use guard::{GuardVerdict, RejectReason, cleanup_guard, negation_count};
+pub use guard::{GuardVerdict, RejectReason, cleanup_guard, is_negation_token, negation_count};
 pub use hallucination::{
     Filtered, NO_SPEECH_THRESHOLD, SHORT_SEGMENT_MAX_WORDS, filter_segments, is_known_hallucination,
 };

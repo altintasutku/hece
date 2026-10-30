@@ -44,14 +44,31 @@ pub enum BenchError {
         audio: String,
     },
     /// An audio file cannot be decoded.
-    #[error("cannot read audio {0}")]
-    BadWav(PathBuf),
+    #[error("cannot read audio {}", location(file, *line))]
+    BadWav {
+        /// Audio file.
+        file: PathBuf,
+        /// 1-based line of the list that names it, when known.
+        line: Option<usize>,
+    },
     /// An audio file is not 16 kHz mono 16-bit PCM.
-    #[error("{0}: audio must be 16 kHz, mono, 16-bit PCM")]
-    WrongFormat(PathBuf),
+    #[error("{}: audio must be 16 kHz, mono, 16-bit PCM", location(file, *line))]
+    WrongFormat {
+        /// Audio file.
+        file: PathBuf,
+        /// 1-based line of the list that names it, when known.
+        line: Option<usize>,
+    },
     /// The directory holds no entries.
     #[error("{0} lists no recordings")]
     Empty(PathBuf),
+}
+
+fn location(file: &Path, line: Option<usize>) -> String {
+    line.map_or_else(
+        || file.display().to_string(),
+        |n| format!("{} (line {n})", file.display()),
+    )
 }
 
 /// Something that turns audio into text; the error is a stable code.
@@ -91,7 +108,7 @@ impl Transcriber for EngineTranscriber<'_> {
     }
 }
 
-fn check_spec(path: &Path, spec: hound::WavSpec) -> Result<(), BenchError> {
+fn check_spec(path: &Path, line: Option<usize>, spec: hound::WavSpec) -> Result<(), BenchError> {
     if spec.sample_rate == SAMPLE_RATE
         && spec.channels == 1
         && spec.bits_per_sample == 16
@@ -99,15 +116,21 @@ fn check_spec(path: &Path, spec: hound::WavSpec) -> Result<(), BenchError> {
     {
         Ok(())
     } else {
-        Err(BenchError::WrongFormat(path.to_owned()))
+        Err(BenchError::WrongFormat {
+            file: path.to_owned(),
+            line,
+        })
     }
 }
 
 /// Reads a 16 kHz mono 16-bit PCM WAV file.
 pub fn read_wav(path: &Path) -> Result<Vec<i16>, BenchError> {
-    let bad = || BenchError::BadWav(path.to_owned());
+    let bad = || BenchError::BadWav {
+        file: path.to_owned(),
+        line: None,
+    };
     let mut reader = hound::WavReader::open(path).map_err(|_| bad())?;
-    check_spec(path, reader.spec())?;
+    check_spec(path, None, reader.spec())?;
     reader
         .samples::<i16>()
         .collect::<Result<Vec<_>, _>>()
@@ -144,8 +167,11 @@ pub fn load_list(dir: &Path) -> Result<Vec<(PathBuf, String)>, BenchError> {
                 audio: name.to_owned(),
             });
         }
-        let reader = hound::WavReader::open(&path).map_err(|_| BenchError::BadWav(path.clone()))?;
-        check_spec(&path, reader.spec())?;
+        let reader = hound::WavReader::open(&path).map_err(|_| BenchError::BadWav {
+            file: path.clone(),
+            line: Some(line),
+        })?;
+        check_spec(&path, Some(line), reader.spec())?;
         rows.push((path, reference.to_owned()));
     }
     if rows.is_empty() {
@@ -344,7 +370,11 @@ mod tests {
         let dir = temp_dir();
         write_wav(&dir.join("hi.wav"), 44_100, 1);
         std::fs::write(dir.join(LIST_FILE), "hi.wav\ttext\n").unwrap();
-        assert!(matches!(load_list(&dir), Err(BenchError::WrongFormat(_))));
+        let err = load_list(&dir).unwrap_err();
+        assert!(matches!(err, BenchError::WrongFormat { line: Some(1), .. }));
+        let msg = err.to_string();
+        assert!(msg.contains("hi.wav") && msg.contains("line 1"), "{msg}");
+        assert!(!msg.contains("text"), "{msg}");
     }
 
     #[test]
@@ -370,7 +400,7 @@ mod tests {
         for name in ["f.wav", "d.wav"] {
             assert!(matches!(
                 read_wav(&dir.join(name)),
-                Err(BenchError::WrongFormat(_))
+                Err(BenchError::WrongFormat { .. })
             ));
         }
     }
@@ -392,11 +422,11 @@ mod tests {
         assert_eq!(read_wav(&dir.join("ok.wav")).unwrap().len(), 160);
         assert!(matches!(
             read_wav(&dir.join("rate.wav")),
-            Err(BenchError::WrongFormat(_))
+            Err(BenchError::WrongFormat { .. })
         ));
         assert!(matches!(
             read_wav(&dir.join("stereo.wav")),
-            Err(BenchError::WrongFormat(_))
+            Err(BenchError::WrongFormat { .. })
         ));
     }
 

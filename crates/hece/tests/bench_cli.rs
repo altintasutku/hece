@@ -12,7 +12,7 @@ fn bench_on_missing_dir_fails_before_starting_the_engine() {
         .args(["bench", "/nonexistent-hece-bench-dir", "--model", "m"])
         .output()
         .unwrap();
-    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(out.status.code(), Some(3));
     assert_eq!(out.stdout, Vec::<u8>::new());
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("liste.tsv"), "{err}");

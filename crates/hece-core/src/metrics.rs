@@ -9,14 +9,16 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::guard::negation_count;
+use crate::guard::is_negation_token;
 use crate::text::fold;
 use crate::textnorm::normalize_words;
 
-/// Minimum length of a run of deleted words that counts as a dropped passage.
+/// Minimum length of a passage of deleted words that counts as a dropped passage.
 const DELETED_RUN_MIN: usize = 5;
 /// Minimum words for a sentence to count in the repetition check.
 const SENTENCE_MIN_WORDS: usize = 4;
+/// Word n-gram length of the repeated-sequence check.
+const NGRAM_LEN: usize = 6;
 
 #[expect(
     clippy::expect_used,
@@ -175,42 +177,76 @@ pub fn score_short(rows: &[Scored], failed: usize, terms: &[String]) -> ShortRep
 pub struct LongReport {
     /// The same numbers as the short set.
     pub short: ShortReport,
-    /// Runs of at least five consecutively deleted words.
+    /// Dropped passages of at least five reference words; deletion runs separated by a
+    /// single matched or substituted word count as one passage.
     pub deleted_runs: usize,
     /// Hypothesis sentences repeated more often than in the reference.
     pub repeated_sentences: usize,
-    /// Negation tokens present in the reference but missing from the hypothesis.
+    /// Distinct word 6-grams that occur more often in the hypothesis than in the reference.
+    pub repeated_ngrams: usize,
+    /// Reference negation tokens that the alignment deletes or replaces with a non-negation
+    /// word. Word-level negations only (değil, yok, hayır, asla, hiç…, not, never, n't…);
+    /// Turkish verb negation (-me/-ma) is not detected.
     pub dropped_negations: usize,
 }
 
 /// Scores the long-recording set.
 #[must_use]
 pub fn score_long(rows: &[Scored], failed: usize, terms: &[String]) -> LongReport {
-    let (mut runs, mut repeated, mut dropped) = (0, 0, 0);
+    let (mut runs, mut repeated, mut ngrams, mut dropped) = (0, 0, 0, 0);
     for row in rows {
         let (r, h) = (
             normalize_words(&row.reference),
             normalize_words(&row.hypothesis),
         );
-        runs += deleted_runs(&r, &h, DELETED_RUN_MIN);
+        let ops = align(&r, &h);
+        runs += deleted_runs_in(&ops, DELETED_RUN_MIN);
         repeated += repeated_sentences(&row.reference, &row.hypothesis);
-        dropped += negation_count(&row.reference).saturating_sub(negation_count(&row.hypothesis));
+        ngrams += repeated_ngrams(&r, &h, NGRAM_LEN);
+        dropped += dropped_negations(&ops, &r, &h);
     }
     LongReport {
         short: score_short(rows, failed, terms),
         deleted_runs: runs,
         repeated_sentences: repeated,
+        repeated_ngrams: ngrams,
         dropped_negations: dropped,
     }
 }
 
-/// Counts maximal runs of at least `min_len` consecutive reference words that the
-/// alignment deletes.
-///
-/// The alignment is a backtrace from the end of the edit-distance table. On ties it
-/// prefers substitution (or match), then deletion, then insertion.
+/// One step of a word alignment; indices point into the reference (`r`) and hypothesis (`h`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlignOp {
+    /// Equal words.
+    Match {
+        /// Reference index.
+        r: usize,
+        /// Hypothesis index.
+        h: usize,
+    },
+    /// Reference word replaced by a different hypothesis word.
+    Sub {
+        /// Reference index.
+        r: usize,
+        /// Hypothesis index.
+        h: usize,
+    },
+    /// Reference word missing from the hypothesis.
+    Del {
+        /// Reference index.
+        r: usize,
+    },
+    /// Hypothesis word absent from the reference.
+    Ins {
+        /// Hypothesis index.
+        h: usize,
+    },
+}
+
+/// Word alignment in reference order, from a backtrace of the edit-distance table. On ties
+/// it prefers match/substitution, then deletion, then insertion.
 #[must_use]
-pub fn deleted_runs(r: &[String], h: &[String], min_len: usize) -> usize {
+pub fn align(r: &[String], h: &[String]) -> Vec<AlignOp> {
     let mut table = vec![vec![0usize; h.len() + 1]; r.len() + 1];
     for (i, row) in table.iter_mut().enumerate() {
         row[0] = i;
@@ -226,31 +262,93 @@ pub fn deleted_runs(r: &[String], h: &[String], min_len: usize) -> usize {
     }
 
     let (mut i, mut j) = (r.len(), h.len());
-    let (mut run, mut runs) = (0usize, 0usize);
+    let mut ops = Vec::with_capacity(r.len().max(h.len()));
     while i > 0 || j > 0 {
         let diag = i > 0
             && j > 0
             && table[i][j] == table[i - 1][j - 1] + usize::from(r[i - 1] != h[j - 1]);
-        let deletion = i > 0 && table[i][j] == table[i - 1][j] + 1;
         if diag {
+            let (ri, hi) = (i - 1, j - 1);
+            ops.push(if r[ri] == h[hi] {
+                AlignOp::Match { r: ri, h: hi }
+            } else {
+                AlignOp::Sub { r: ri, h: hi }
+            });
             i -= 1;
             j -= 1;
-        } else if deletion {
+        } else if i > 0 && table[i][j] == table[i - 1][j] + 1 {
+            ops.push(AlignOp::Del { r: i - 1 });
             i -= 1;
-            run += 1;
-            continue;
         } else {
+            ops.push(AlignOp::Ins { h: j - 1 });
             j -= 1;
         }
-        if run >= min_len {
-            runs += 1;
+    }
+    ops.reverse();
+    ops
+}
+
+/// Counts dropped passages of at least `min_len` deleted reference words.
+///
+/// Deletion runs separated by at most one matched or substituted reference word merge into
+/// one passage; only the deleted words count toward its length. Insertions do not split it.
+#[must_use]
+pub fn deleted_runs(r: &[String], h: &[String], min_len: usize) -> usize {
+    deleted_runs_in(&align(r, h), min_len)
+}
+
+fn deleted_runs_in(ops: &[AlignOp], min_len: usize) -> usize {
+    let (mut passage, mut gap, mut runs) = (0usize, 0usize, 0usize);
+    for op in ops {
+        match op {
+            AlignOp::Del { .. } => {
+                if gap > 1 && passage >= min_len {
+                    runs += 1;
+                }
+                passage = if gap > 1 { 1 } else { passage + 1 };
+                gap = 0;
+            }
+            AlignOp::Match { .. } | AlignOp::Sub { .. } => gap += 1,
+            AlignOp::Ins { .. } => {}
         }
-        run = 0;
     }
-    if run >= min_len {
-        runs += 1;
+    runs + usize::from(passage >= min_len)
+}
+
+fn is_negation_word(word: &str) -> bool {
+    is_negation_token(&fold(word))
+}
+
+/// Reference negation tokens that the alignment deletes or substitutes with a non-negation.
+fn dropped_negations(ops: &[AlignOp], r: &[String], h: &[String]) -> usize {
+    ops.iter()
+        .filter(|op| match **op {
+            AlignOp::Del { r: ri } => is_negation_word(&r[ri]),
+            AlignOp::Sub { r: ri, h: hi } => is_negation_word(&r[ri]) && !is_negation_word(&h[hi]),
+            AlignOp::Match { .. } | AlignOp::Ins { .. } => false,
+        })
+        .count()
+}
+
+fn ngram_counts(words: &[String], n: usize) -> HashMap<&[String], usize> {
+    let mut counts = HashMap::new();
+    for gram in words.windows(n) {
+        *counts.entry(gram).or_insert(0) += 1;
     }
-    runs
+    counts
+}
+
+/// Distinct word `n`-grams that occur more often in `h` than in `r`.
+#[must_use]
+pub fn repeated_ngrams(r: &[String], h: &[String], n: usize) -> usize {
+    if n == 0 {
+        return 0;
+    }
+    let reference = ngram_counts(r, n);
+    ngram_counts(h, n)
+        .into_iter()
+        .filter(|(gram, count)| *count > reference.get(gram).copied().unwrap_or(0))
+        .count()
 }
 
 fn sentence_counts(text: &str) -> HashMap<String, usize> {
@@ -394,10 +492,40 @@ mod tests {
         let r = words(6, "w");
         assert_eq!(deleted_runs(&r, &[], 5), 1);
         let mut r2 = words(4, "a");
-        r2.push("m".to_owned());
+        r2.extend(["m1".to_owned(), "m2".to_owned()]);
         r2.extend(words(4, "b"));
-        assert_eq!(deleted_runs(&r2, &["m".to_owned()], 5), 0);
-        assert_eq!(deleted_runs(&r2, &["m".to_owned()], 4), 2);
+        let kept = ["m1".to_owned(), "m2".to_owned()];
+        assert_eq!(deleted_runs(&r2, &kept, 5), 0);
+        assert_eq!(deleted_runs(&r2, &kept, 4), 2);
+    }
+
+    #[test]
+    fn deleted_runs_merges_runs_split_by_one_matched_word() {
+        let r = normalize_words("sonra bir gün bir adam bir köye gitti ve orada kaldı");
+        let h = normalize_words("sonra bir kaldı");
+        assert_eq!(deleted_runs(&r, &h, 5), 1);
+    }
+
+    #[test]
+    fn dropped_negations_ignores_unrelated_insertions() {
+        let rows = vec![row(
+            "a",
+            "bu doğru değil ama sonra hiç gelmedi",
+            "bu doğru ama sonra hiç gelmedi yok",
+        )];
+        assert_eq!(score_long(&rows, 0, &[]).dropped_negations, 1);
+        let kept = vec![row("a", "bu doğru değil", "bu doğru değil")];
+        assert_eq!(score_long(&kept, 0, &[]).dropped_negations, 0);
+    }
+
+    #[test]
+    fn repeated_ngrams_flags_extra_hypothesis_sequences() {
+        let r = "sabah eve gittik ertesi gün işe başladık";
+        let h = "sabah eve gittik ertesi gün geldik eve gittik ertesi gün geldik";
+        let rows = vec![row("a", r, h)];
+        assert!(score_long(&rows, 0, &[]).repeated_ngrams >= 1);
+        let same = vec![row("a", r, r)];
+        assert_eq!(score_long(&same, 0, &[]).repeated_ngrams, 0);
     }
 
     #[test]

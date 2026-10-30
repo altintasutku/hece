@@ -10,6 +10,7 @@ publish.workspace = true
 
 [features]
 cuda = ["dep:ct2rs"]
+cuda-dynamic = ["cuda", "ct2rs/cuda-dynamic-loading"]
 
 [lints]
 workspace = true

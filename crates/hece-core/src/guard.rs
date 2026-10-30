@@ -83,7 +83,9 @@ fn is_negation(token: &str) -> bool {
         )
 }
 
-fn negation_count(text: &str) -> usize {
+/// Counts negation tokens in `text` (folded, same tokenizer the guard uses).
+#[must_use]
+pub fn negation_count(text: &str) -> usize {
     let folded = fold(text);
     TOKEN
         .find_iter(&folded)

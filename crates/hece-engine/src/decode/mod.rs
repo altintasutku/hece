@@ -147,6 +147,37 @@ pub fn decode_segments<D: Decoder>(
     suppress: &[i32],
     opts: &DecodeOptions,
 ) -> Result<Vec<Segment>, EngineError> {
+    decode_segments_restored(
+        dec,
+        tok,
+        sp,
+        language,
+        mel,
+        initial_prompt,
+        suppress,
+        opts,
+        &|t, _| t,
+    )
+}
+
+/// [`decode_segments`] with `restore(time, is_end)` applied to every segment time while it is
+/// still `f64`, so VAD timestamp restoration sees the same values as the reference (converting
+/// to the `f32` of [`Segment`] first would move times across chunk boundaries).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors the reference inputs; bundling them adds a type with no other use"
+)]
+pub(crate) fn decode_segments_restored<D: Decoder>(
+    dec: &mut D,
+    tok: &dyn TextTokenizer,
+    sp: &SpecialTokens,
+    language: u32,
+    mel: &Mel,
+    initial_prompt: &[u32],
+    suppress: &[i32],
+    opts: &DecodeOptions,
+    restore: &dyn Fn(f64, bool) -> f64,
+) -> Result<Vec<Segment>, EngineError> {
     let content_frames = mel.frames.saturating_sub(1);
     let sot_seq = sot_sequence(sp, language);
     let mut seek = 0;
@@ -196,7 +227,7 @@ pub fn decode_segments<D: Decoder>(
                 continue;
             }
             all_tokens.extend_from_slice(&raw.tokens);
-            segments.push(to_segment(text, &raw, &decoded));
+            segments.push(to_segment(text, &raw, &decoded, restore));
         }
 
         if !opts.condition_on_previous_text
@@ -250,11 +281,16 @@ fn frames_to_secs(frames: usize) -> f64 {
     clippy::cast_possible_truncation,
     reason = "hece_core::Segment stores f32; the reference computes in f64 and so does this"
 )]
-fn to_segment(text: String, raw: &RawSegment, decoded: &Decoded) -> Segment {
+fn to_segment(
+    text: String,
+    raw: &RawSegment,
+    decoded: &Decoded,
+    restore: &dyn Fn(f64, bool) -> f64,
+) -> Segment {
     Segment {
         text,
-        start_s: raw.start as f32,
-        end_s: raw.end as f32,
+        start_s: restore(raw.start, false) as f32,
+        end_s: restore(raw.end, true) as f32,
         no_speech_prob: decoded.result.no_speech_prob,
         avg_logprob: decoded.avg_logprob as f32,
     }

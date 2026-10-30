@@ -25,3 +25,12 @@ ct2rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true
+hound.workspace = true
+
+[[example]]
+name = "transcribe_dir"
+required-features = ["cuda"]
+
+[[test]]
+name = "engine_real"
+required-features = ["cuda"]

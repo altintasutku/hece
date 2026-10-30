@@ -11,3 +11,7 @@ Background voice dictation for the desktop. Press a hotkey, speak, and the text 
 Status: early development. Linux (KDE Plasma Wayland) first; macOS and Windows later.
 
 License: MIT
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, the quality gate, and PR expectations.

@@ -20,6 +20,8 @@ hece-core = { path = "../hece-core" }
 thiserror.workspace = true
 rustfft.workspace = true
 flate2.workspace = true
+# Pins the bundled zlib so compression ratios match CPython regardless of the system zlib.
+libz-sys.workspace = true
 tokenizers.workspace = true
 ort.workspace = true
 ct2rs = { workspace = true, optional = true }

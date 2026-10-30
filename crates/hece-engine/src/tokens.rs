@@ -104,10 +104,20 @@ impl SpecialTokens {
 
 /// The language token for a code such as `tr` (`<|tr|>`).
 ///
+/// Language tokens are contiguous between `<|startoftranscript|>` and `<|translate|>` in
+/// multilingual Whisper vocabularies; any other token (`<|nospeech|>`, timestamps, ...) is
+/// rejected.
+///
 /// # Errors
-/// `EngineError::Tokenizer` if the vocabulary has no such language.
-pub fn language_token(tok: &dyn TextTokenizer, lang: &str) -> Result<u32, EngineError> {
-    require(tok, &format!("<|{lang}|>"))
+/// `EngineError::UnsupportedLanguage` if `lang` is not a language token of the vocabulary.
+pub fn language_token(
+    tok: &dyn TextTokenizer,
+    sp: &SpecialTokens,
+    lang: &str,
+) -> Result<u32, EngineError> {
+    tok.token_id(&format!("<|{lang}|>"))
+        .filter(|&id| id > sp.sot && id < sp.translate)
+        .ok_or(EngineError::UnsupportedLanguage)
 }
 
 /// The decoder prompt `[sot, language, transcribe]`.
@@ -242,11 +252,12 @@ mod tests {
                 ("<|startoftranscript|>", 10),
                 ("<|startofprev|>", 11),
                 ("<|startoflm|>", 12),
-                ("<|endoftext|>", 13),
-                ("<|transcribe|>", 14),
-                ("<|translate|>", 15),
-                ("<|notimestamps|>", 16),
-                ("<|nospeech|>", 17),
+                ("<|endoftext|>", 5),
+                ("<|transcribe|>", 34),
+                ("<|translate|>", 30),
+                ("<|notimestamps|>", 31),
+                ("<|nospeech|>", 32),
+                ("<|0.00|>", 33),
                 ("<|tr|>", 18),
             ])
         }
@@ -285,11 +296,11 @@ mod tests {
                 sp.transcribe,
                 sp.translate
             ),
-            (10, 11, 12, 13, 14, 15)
+            (10, 11, 12, 5, 34, 30)
         );
         assert_eq!(
             (sp.no_timestamps, sp.no_speech, sp.timestamp_begin),
-            (16, 17, 17)
+            (31, 32, 32)
         );
     }
 
@@ -313,10 +324,27 @@ mod tests {
     fn language_token_and_sot_sequence() {
         let fake = Fake::full();
         let sp = SpecialTokens::resolve(&fake).unwrap();
-        let lang = language_token(&fake, "tr").unwrap();
+        let lang = language_token(&fake, &sp, "tr").unwrap();
         assert_eq!(lang, 18);
-        assert_eq!(sot_sequence(&sp, lang), [10, 18, 14]);
-        assert!(language_token(&fake, "xx").is_err());
+        assert_eq!(sot_sequence(&sp, lang), [10, 18, 34]);
+    }
+
+    #[test]
+    fn language_token_rejects_non_language_tokens() {
+        let fake = Fake::full();
+        let sp = SpecialTokens::resolve(&fake).unwrap();
+        assert_eq!(language_token(&fake, &sp, "tr").unwrap(), 18);
+        for code in [
+            "nospeech",
+            "translate",
+            "transcribe",
+            "0.00",
+            "xx",
+            "endoftext",
+        ] {
+            let err = language_token(&fake, &sp, code).unwrap_err();
+            assert_eq!(err.code(), "unsupported_language", "{code}");
+        }
     }
 
     #[test]
@@ -352,10 +380,10 @@ mod tests {
         let sp = SpecialTokens::resolve(&fake).unwrap();
         let list = suppressed_tokens(&fake, &sp).unwrap();
         assert!(list.windows(2).all(|w| w[0] < w[1]));
-        for id in [10, 11, 12, 14, 15, 17] {
+        for id in [10, 11, 12, 34, 30, 32] {
             assert!(list.contains(&id));
         }
-        assert!(!list.contains(&13));
+        assert!(!list.contains(&5));
     }
 
     fn failing() -> Fake {

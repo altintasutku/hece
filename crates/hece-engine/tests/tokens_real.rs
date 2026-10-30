@@ -36,7 +36,7 @@ fn matches_faster_whisper() {
     assert_eq!(sp.no_speech, id(&expected["no_speech"]));
     assert_eq!(sp.timestamp_begin, id(&expected["timestamp_begin"]));
 
-    let tr = language_token(&tok, "tr").unwrap();
+    let tr = language_token(&tok, &sp, "tr").unwrap();
     assert_eq!(tr, id(&expected["language_tr"]));
     let seq: Vec<u32> = expected["sot_sequence"]
         .as_array()

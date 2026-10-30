@@ -14,7 +14,7 @@ use tokenizers::Tokenizer;
 
 use crate::decode::{Decoder, GenerateRequest, GenerateResult};
 use crate::engine::{ComputeKind, TranscribeOptions, decode_prepared, prepare};
-use crate::error::EngineError;
+use crate::error::{EngineError, classify_load_error, classify_runtime_error};
 use crate::mel::{MelExtractor, N_FRAMES};
 use crate::tokens::{SpecialTokens, language_token, vocabulary_prompt};
 use crate::vad::SileroVad;
@@ -26,7 +26,7 @@ const REQUIRED_FILES: [&str; 3] = ["model.bin", "tokenizer.json", "config.json"]
 const PROVIDER: &str = "local-ct2";
 
 fn decode_err(e: impl std::fmt::Display) -> EngineError {
-    EngineError::Decode(e.to_string())
+    classify_runtime_error(&e)
 }
 
 impl From<ComputeKind> for ComputeType {
@@ -124,6 +124,12 @@ impl Decoder for Ct2Decoder<'_> {
     }
 }
 
+#[cfg(all(test, feature = "cuda"))]
+const _: fn() = || {
+    fn assert_send<T: Send>() {}
+    assert_send::<LocalEngine>();
+};
+
 /// Local Whisper on `CTranslate2` with CUDA: model, tokenizer, VAD and mel extractor.
 pub struct LocalEngine {
     whisper: Whisper,
@@ -184,8 +190,9 @@ impl LocalEngine {
     }
 
     /// Transcribes 16 kHz mono `audio`. The language is `opts.language` or detected on the first
-    /// 30 s window (the model is multilingual; `load` rejects English-only models). No speech gives an empty transcript whose language is the requested one (or
-    /// empty when none was requested, since nothing was detected).
+    /// 30 s window (the model is multilingual; `load` rejects English-only models). No speech
+    /// gives an empty transcript whose language is the requested one (or empty when none was
+    /// requested, since nothing was detected).
     pub fn transcribe(
         &mut self,
         audio: &[i16],
@@ -208,7 +215,7 @@ impl LocalEngine {
             let mut window = prepared.mel.window(0, N_FRAMES);
             detect_language(&dec, &mut window)?
         };
-        let lang_id = language_token(&self.tokenizer, &language)?;
+        let lang_id = language_token(&self.tokenizer, &self.special, &language)?;
         let segments = decode_prepared(
             &mut dec,
             &self.tokenizer,
@@ -261,28 +268,6 @@ fn detect_language(dec: &Ct2Decoder<'_>, window: &mut [f32]) -> Result<String, E
         .ok_or_else(|| EngineError::Decode("unexpected language token".to_owned()))
 }
 
-/// Prefixes of the `CTranslate2` exceptions raised when the CUDA runtime or device is unusable:
-/// `CUDA_CHECK` (no device, driver too old, invalid device index), `CUBLAS_CHECK`, and a build
-/// without CUDA (`devices.cc`). Case-sensitive, so a model path containing "cuda" does not match.
-const CUDA_ERRORS: [&str; 3] = [
-    "CUDA failed with error ",
-    "cuBLAS failed with status ",
-    "This CTranslate2 package was not compiled with CUDA support",
-];
-
-/// Maps a `Whisper::new` failure. ct2rs flattens C++ exceptions into an error message, so CUDA
-/// failures are recognised by [`CUDA_ERRORS`]. Everything else is `ModelDirInvalid`, including
-/// a compute type the device cannot run ("Requested ... compute type, but the target device or
-/// backend do not support ..."): the converted model and the requested precision do not fit.
-fn classify_load_error(e: &impl std::fmt::Display) -> EngineError {
-    let message = e.to_string();
-    if CUDA_ERRORS.iter().any(|m| message.contains(m)) {
-        EngineError::CudaUnavailable
-    } else {
-        EngineError::ModelDirInvalid { reason: message }
-    }
-}
-
 /// English-only models need the prompt `[sot]` instead of `[sot, language, transcribe]`, which
 /// this pipeline does not build, so they are rejected instead of being decoded wrongly.
 fn check_multilingual(is_multilingual: bool) -> Result<(), EngineError> {
@@ -314,31 +299,6 @@ fn transcript(segments: Vec<hece_core::Segment>, language: String) -> Transcript
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn ctranslate2_cuda_errors_are_cuda_unavailable() {
-        for message in [
-            "CUDA failed with error no CUDA-capable device is detected",
-            "CUDA failed with error CUDA driver version is insufficient for CUDA runtime version",
-            "CUDA failed with error invalid device ordinal",
-            "cuBLAS failed with status CUBLAS_STATUS_NOT_INITIALIZED",
-            "This CTranslate2 package was not compiled with CUDA support",
-        ] {
-            assert_eq!(classify_load_error(&message).code(), "cuda_unavailable");
-        }
-    }
-
-    #[test]
-    fn other_load_errors_are_model_dir_invalid() {
-        for message in [
-            "Unable to open file 'model.bin' in model '/models/cuda-whisper/'",
-            "Unable to open file '/models/CUDA-whisper/model.bin'",
-            "Requested int8_float16 compute type, but the target device or backend do not \
-             support efficient int8_float16 computation.",
-        ] {
-            assert_eq!(classify_load_error(&message).code(), "model_dir_invalid");
-        }
-    }
 
     #[test]
     fn english_only_models_are_rejected() {

@@ -123,6 +123,7 @@ pub(crate) fn decode_prepared<D: Decoder>(
 
 /// Transcribes 16 kHz mono `audio` into segments with fixed `language` (a language token id).
 /// With `opts.vad`, audio without speech returns no segments without calling the decoder.
+/// `opts.language` is ignored here: the caller passes the resolved `language` token.
 #[expect(
     clippy::too_many_arguments,
     reason = "the pipeline's parts are separate so tests can swap the decoder and tokenizer"

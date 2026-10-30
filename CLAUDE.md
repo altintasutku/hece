@@ -42,11 +42,11 @@ cargo test --workspace
 - Audio, transcripts, and API keys are never logged.
 
 ### Forbidden
-- `unsafe` outside FFI wrapper modules (those need `#[allow(unsafe_code)]` with a justifying comment).
+- `unsafe` outside FFI wrapper modules (those need `#[allow(unsafe_code, reason = "...")]`).
 - `unwrap()` / `expect()` outside tests.
-- `#[allow(...)]` without an explanatory comment.
-- Debug prints (`println!`, `eprintln!`, `dbg!`) in non-test code.
-- Kernel input access: evdev, uinput, ydotool. Global shortcuts go through the desktop portal.
+- `#[allow(...)]` without `reason = "..."` (enforced by `clippy::allow_attributes_without_reason`); every `unsafe` block needs a `// SAFETY:` comment (`clippy::undocumented_unsafe_blocks`).
+- Debug prints (`dbg!`, stray `println!`/`eprintln!`). User-facing CLI output goes through one output module that allows `clippy::print_stdout` with a `reason`.
+- Kernel input access: evdev, uinput, `input` group membership, ydotool. Global shortcuts go through the desktop portal.
 - Key-by-key typing. Insertion is clipboard + one paste chord.
 
 ### Conventions

@@ -9,3 +9,8 @@
 *.ogg
 *.flac
 *.mp3
+*.opus
+*.m4a
+*.webm
+*.pcm
+*.raw

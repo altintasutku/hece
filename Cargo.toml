@@ -8,9 +8,10 @@ rust-version = "1.94"
 license = "MIT"
 repository = "https://github.com/altintasutku/hece"
 version = "0.1.0"
+publish = false
 
 [workspace.lints.rust]
-# FFI wrapper modules may `#[allow(unsafe_code)]` with a justifying comment.
+# FFI wrapper modules may `#[allow(unsafe_code, reason = "...")]` with a justifying reason.
 unsafe_code = "deny"
 missing_debug_implementations = "warn"
 
@@ -22,6 +23,9 @@ dbg_macro = "warn"
 todo = "warn"
 unimplemented = "warn"
 print_stderr = "warn"
+print_stdout = "warn"
+allow_attributes_without_reason = "warn"
+undocumented_unsafe_blocks = "warn"
 # Opt-outs from pedantic:
 # Crate-prefixed type names (e.g. engine::EngineError) read better at call sites.
 module_name_repetitions = "allow"

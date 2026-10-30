@@ -10,6 +10,7 @@
       "groupName": "all non-major dependencies"
     }
   ],
+  "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "enabled": true,
     "schedule": ["at any time"]

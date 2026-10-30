@@ -9,7 +9,7 @@ fn exits_with_code_2_and_one_line_message() {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert!(out.stdout.is_empty());
+    assert_eq!(out.stdout, [] as [u8; 0]);
     let stderr = String::from_utf8(out.stderr).unwrap();
     assert_eq!(stderr.trim_end().lines().count(), 1);
     #[cfg(not(feature = "cuda"))]

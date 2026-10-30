@@ -157,7 +157,7 @@ mod tests {
     fn empty_tokens_give_one_window_long_segment() {
         let (segments, seek, single) = split_by_timestamps(50_365, &[], 0.0, 3000, 30.0, 0);
         assert_eq!(segments.len(), 1);
-        assert!(segments[0].tokens.is_empty());
+        assert_eq!(segments[0].tokens, [] as [u32; 0]);
         assert_eq!((seek, single), (3000, false));
     }
 }

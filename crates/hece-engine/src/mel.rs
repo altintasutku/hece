@@ -109,7 +109,7 @@ impl MelExtractor {
         // Power spectrum per frame, row-major `[frames][N_FREQS]`.
         let mut power = vec![0.0_f32; frames * N_FREQS];
         let mut buf = vec![Complex::new(0.0_f32, 0.0); N_FFT];
-        for (t, row) in power.chunks_exact_mut(N_FREQS).enumerate() {
+        for (t, row) in power.as_chunks_mut::<N_FREQS>().0.iter_mut().enumerate() {
             for (i, b) in buf.iter_mut().enumerate() {
                 *b = Complex::new(padded[t * HOP + i] * self.window[i], 0.0);
             }
@@ -121,7 +121,7 @@ impl MelExtractor {
 
         let mut data = vec![0.0_f32; self.n_mels * frames];
         let mut max = f32::MIN;
-        for (m, filt) in self.filters.chunks_exact(N_FREQS).enumerate() {
+        for (m, filt) in self.filters.as_chunks::<N_FREQS>().0.iter().enumerate() {
             for t in 0..frames {
                 let spec = &power[t * N_FREQS..(t + 1) * N_FREQS];
                 let v: f32 = filt.iter().zip(spec).map(|(a, b)| a * b).sum();

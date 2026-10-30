@@ -583,7 +583,7 @@ mod tests {
         let mut dec = FakeDecoder::new(vec![res(vec![t(0), 100, t(500)], -1.5, 0.9)]);
         let segs = run(&mut dec, &mel(15), &[]);
         assert_eq!(dec.calls.len(), 1);
-        assert!(segs.is_empty());
+        assert_eq!(segs, [] as [hece_core::Segment; 0]);
     }
 
     #[test]
@@ -647,7 +647,7 @@ mod tests {
         let mut dec = FakeDecoder::new(vec![res(vec![t(0), t(0), 100, 101], -0.2, 0.01)]);
         let segs = run(&mut dec, &mel(15), &[]);
         assert_eq!(dec.calls.len(), 1);
-        assert!(segs.is_empty());
+        assert_eq!(segs, [] as [hece_core::Segment; 0]);
     }
 
     #[test]
@@ -696,7 +696,7 @@ mod tests {
             frames: 0,
             data: Vec::new(),
         };
-        assert!(run(&mut dec, &empty, &[]).is_empty());
+        assert_eq!(run(&mut dec, &empty, &[]), [] as [hece_core::Segment; 0]);
         assert_eq!(dec.encodes, 0);
     }
 }

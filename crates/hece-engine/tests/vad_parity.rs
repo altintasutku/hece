@@ -104,7 +104,7 @@ fn silero_probs_match_faster_whisper() {
 #[test]
 fn all_zero_probs_give_no_spans() {
     let spans = speech_timestamps(&[0.0; 50], 25_000, &VadOptions::default());
-    assert!(spans.is_empty());
+    assert_eq!(spans, [] as [hece_engine::vad::SpeechSpan; 0]);
 }
 
 #[test]
@@ -112,27 +112,26 @@ fn short_inputs_give_one_prob_without_panic() {
     let mut vad = SileroVad::new().unwrap();
     assert_eq!(vad.speech_probs(&vec![0.01; 100]).unwrap().len(), 1);
     assert_eq!(vad.speech_probs(&vec![0.01; 512]).unwrap().len(), 1);
-    assert!(vad.speech_probs(&[]).unwrap().is_empty());
+    assert_eq!(vad.speech_probs(&[]).unwrap(), [] as [f32; 0]);
 }
 
 #[test]
 fn speech_spans_on_silence_is_empty() {
     let mut vad = SileroVad::new().unwrap();
-    assert!(
+    assert_eq!(
         vad.speech_spans(&vec![0.0; 16_000], &VadOptions::default())
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+        [] as [hece_engine::vad::SpeechSpan; 0]
     );
-    assert!(
-        vad.speech_spans(&[], &VadOptions::default())
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        vad.speech_spans(&[], &VadOptions::default()).unwrap(),
+        [] as [hece_engine::vad::SpeechSpan; 0]
     );
 }
 
 #[test]
 fn collect_chunks_concatenates_spans() {
-    assert!(collect_chunks(&[1.0, 2.0], &[]).is_empty());
+    assert_eq!(collect_chunks(&[1.0, 2.0], &[]), [] as [f32; 0]);
     let audio: Vec<f32> = (0..10u8).map(f32::from).collect();
     let spans = [
         SpeechSpan { start: 1, end: 3 },

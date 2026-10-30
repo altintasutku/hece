@@ -276,15 +276,18 @@ mod tests {
     fn silent_audio_with_vad_never_reaches_the_decoder() {
         let mut dec = CountingDecoder::default();
         let segs = run(&mut dec, &vec![0; 32_000], &TranscribeOptions::default());
-        assert!(segs.is_empty());
+        assert_eq!(segs, [] as [hece_core::Segment; 0]);
         assert_eq!(dec.encodes, 0);
-        assert!(dec.prompts.is_empty());
+        assert_eq!(dec.prompts, [] as [std::vec::Vec<u32>; 0]);
     }
 
     #[test]
     fn empty_audio_with_vad_never_reaches_the_decoder() {
         let mut dec = CountingDecoder::default();
-        assert!(run(&mut dec, &[], &TranscribeOptions::default()).is_empty());
+        assert_eq!(
+            run(&mut dec, &[], &TranscribeOptions::default()),
+            [] as [hece_core::Segment; 0]
+        );
         assert_eq!(dec.encodes, 0);
     }
 
@@ -319,7 +322,7 @@ mod tests {
             [3, 7, 50_258, 50_359, 50_360, 50_361, 50_362, 50_363]
         );
         // faster-whisper passes an empty list through untouched.
-        assert!(resolve_suppress(&tok, &sp(), &[]).unwrap().is_empty());
+        assert_eq!(resolve_suppress(&tok, &sp(), &[]).unwrap(), [] as [i32; 0]);
         let mixed = resolve_suppress(&tok, &sp(), &[-1, 5]).unwrap();
         assert!(mixed.contains(&5) && !mixed.contains(&-1));
     }

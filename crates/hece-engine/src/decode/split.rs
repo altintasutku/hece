@@ -78,8 +78,9 @@ pub fn split_by_timestamps(
             // A single timestamp at the end means no speech after it.
             seek += segment_size;
         } else {
-            // Drop the unfinished segment and seek to the last timestamp. `tokens[last_slice - 1]`
-            // is the second token of a consecutive pair, so it is a timestamp.
+            // Drop the unfinished segment and seek to the last timestamp. `last_slice` is the
+            // index of the second token of the last consecutive timestamp pair, so
+            // `tokens[last_slice - 1]` is that pair's first token, a timestamp.
             let last_position = tokens[last_slice - 1].saturating_sub(timestamp_begin);
             seek += last_position as usize * INPUT_STRIDE;
         }

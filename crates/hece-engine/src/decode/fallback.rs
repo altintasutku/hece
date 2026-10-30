@@ -16,10 +16,6 @@ use crate::tokens::{SpecialTokens, TextTokenizer};
 pub(super) const MAX_LENGTH: usize = 448;
 
 /// `len(utf8) / len(zlib.compress(utf8))`, with zlib's default level 6 like Python.
-///
-/// zlib-rs follows zlib-ng's match finder, so on some short inputs the compressed size differs
-/// from stock zlib by a few bytes (a ratio difference of a few percent). Repetitive text, the
-/// case the 2.4 threshold targets, compresses the same way in both.
 #[must_use]
 #[expect(
     clippy::cast_precision_loss,
@@ -203,12 +199,7 @@ mod tests {
             let text = case["text"].as_str().unwrap();
             let want = case["ratio"].as_f64().unwrap();
             let got = compression_ratio(text);
-            // See `compression_ratio`: zlib-rs may differ slightly from Python's stock zlib.
-            assert!(
-                (got - want).abs() <= want * 0.1,
-                "{text:?}: {got} vs {want}"
-            );
-            assert_eq!(got > 2.4, want > 2.4, "{text:?}: threshold side");
+            assert!((got - want).abs() < 1e-12, "{text:?}: {got} != {want}");
         }
     }
 

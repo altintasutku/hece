@@ -183,13 +183,7 @@ pub fn decode_segments<D: Decoder>(
             segment_duration,
             seek,
         );
-        // The reference loops forever when a window ends on a consecutive timestamp pair at
-        // position 0 (seek += 0, same input, same output). Move to the next window instead.
-        seek = if next_seek > previous_seek {
-            next_seek
-        } else {
-            previous_seek + segment_size
-        };
+        seek = next_seek;
 
         for raw in current {
             let text = decode_text(tok, sp, &raw.tokens)?;
@@ -209,6 +203,18 @@ pub fn decode_segments<D: Decoder>(
             || decoded.temperature > opts.prompt_reset_on_temperature
         {
             prompt_reset_since = all_tokens.len();
+        }
+
+        // A window whose last consecutive timestamp pair sits at position 0 does not move the
+        // seek. The reference then decodes the same seek again. If that decode was beam search
+        // (temperature 0) and the prompt has not changed (no segment was kept, no reset), the
+        // retry has the same inputs and gives the same result, so the reference never ends.
+        // Only in that case move on to the next window; otherwise retry like the reference.
+        if seek == previous_seek
+            && decoded.temperature <= 0.0
+            && get_prompt(sp.sot_prev, &all_tokens[prompt_reset_since..], &sot_seq) == prompt
+        {
+            seek += segment_size;
         }
     }
     Ok(segments)
@@ -600,12 +606,33 @@ mod tests {
     }
 
     #[test]
-    fn window_without_progress_still_terminates() {
-        // Ends on a consecutive pair at position 0: the reference would seek by 0 forever.
-        let mut dec = FakeDecoder::new(vec![res(vec![t(0), 100, t(0), t(0)], -0.2, 0.01)]);
+    fn deterministic_window_without_progress_moves_on() {
+        // Consecutive pair at position 0, then unfinished text: seek += 0, nothing kept.
+        let mut dec = FakeDecoder::new(vec![res(vec![t(0), t(0), 100, 101], -0.2, 0.01)]);
         let segs = run(&mut dec, &mel(15), &[]);
         assert_eq!(dec.calls.len(), 1);
         assert!(segs.is_empty());
+    }
+
+    #[test]
+    fn window_without_progress_retries_after_prompt_reset() {
+        let stuck = vec![t(0), t(0), 100, 101];
+        let mut script = vec![res(repetitive(), -0.1, 0.01)];
+        // Every temperature fails; the stuck result wins and the reported 1.0 resets the prompt.
+        script.extend((0..5).map(|_| res(stuck.clone(), -1.2, 0.01)));
+        script.push(res(vec![t(0), 104, t(500)], -0.2, 0.01));
+        let mut dec = FakeDecoder::new(script);
+        let segs = run(&mut dec, &mel(15), &[7, 8, 9]);
+        assert_eq!(dec.calls.len(), 7);
+        assert_eq!(
+            dec.calls[0].prompt,
+            [SOT_PREV, 7, 8, 9, SOT, LANG, TRANSCRIBE]
+        );
+        // Same seek decoded again, with the reset prompt.
+        assert!(close(dec.calls[6].window_start, 0.0));
+        assert_eq!(dec.calls[6].prompt, SOT_SEQ);
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].text, " w104");
     }
 
     #[test]

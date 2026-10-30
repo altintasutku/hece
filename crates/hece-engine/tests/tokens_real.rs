@@ -52,7 +52,7 @@ fn matches_faster_whisper() {
         .iter()
         .map(|v| i32::try_from(v.as_i64().unwrap()).unwrap())
         .collect();
-    assert_eq!(suppressed_tokens(&tok, &sp), suppressed);
+    assert_eq!(suppressed_tokens(&tok, &sp).unwrap(), suppressed);
 
     let text = expected["text"].as_str().unwrap();
     let ids: Vec<u32> = expected["text_tokens"]
@@ -61,5 +61,5 @@ fn matches_faster_whisper() {
         .iter()
         .map(id)
         .collect();
-    assert_eq!(TextTokenizer::encode(&tok, text), ids);
+    assert_eq!(TextTokenizer::encode(&tok, text).unwrap(), ids);
 }

@@ -52,7 +52,7 @@ pub fn format_long_lines(r: &LongReport, short_wer: Option<f64>) -> Vec<String> 
     vec![
         format!("deleted_runs_ge5: {}", r.deleted_runs),
         format!("repeated_sentences: {}", r.repeated_sentences),
-        format!("repeated_6grams: {}", r.repeated_ngrams),
+        format!("repeated_5grams: {}", r.repeated_ngrams),
         format!("dropped_negations: {}", r.dropped_negations),
         format!("wer_delta_vs_short: {delta}"),
     ]

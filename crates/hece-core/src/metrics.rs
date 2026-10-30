@@ -18,7 +18,7 @@ const DELETED_RUN_MIN: usize = 5;
 /// Minimum words for a sentence to count in the repetition check.
 const SENTENCE_MIN_WORDS: usize = 4;
 /// Word n-gram length of the repeated-sequence check.
-const NGRAM_LEN: usize = 6;
+const NGRAM_LEN: usize = 5;
 
 #[expect(
     clippy::expect_used,
@@ -182,7 +182,8 @@ pub struct LongReport {
     pub deleted_runs: usize,
     /// Hypothesis sentences repeated more often than in the reference.
     pub repeated_sentences: usize,
-    /// Distinct word 6-grams that occur more often in the hypothesis than in the reference.
+    /// Distinct word 5-grams repeated in the hypothesis (at least twice) more often than in
+    /// the reference: catches unpunctuated loops and chunk-overlap duplication.
     pub repeated_ngrams: usize,
     /// Reference negation tokens that the alignment deletes or replaces with a non-negation
     /// word. Word-level negations only (değil, yok, hayır, asla, hiç…, not, never, n't…);
@@ -338,7 +339,8 @@ fn ngram_counts(words: &[String], n: usize) -> HashMap<&[String], usize> {
     counts
 }
 
-/// Distinct word `n`-grams that occur more often in `h` than in `r`.
+/// Distinct word `n`-grams that occur at least twice in `h` and more often than in `r`.
+/// Requiring a repeat keeps plain substitutions (new n-grams seen once) from counting.
 #[must_use]
 pub fn repeated_ngrams(r: &[String], h: &[String], n: usize) -> usize {
     if n == 0 {
@@ -347,7 +349,7 @@ pub fn repeated_ngrams(r: &[String], h: &[String], n: usize) -> usize {
     let reference = ngram_counts(r, n);
     ngram_counts(h, n)
         .into_iter()
-        .filter(|(gram, count)| *count > reference.get(gram).copied().unwrap_or(0))
+        .filter(|(gram, count)| *count >= 2 && *count > reference.get(gram).copied().unwrap_or(0))
         .count()
 }
 
@@ -526,6 +528,9 @@ mod tests {
         assert!(score_long(&rows, 0, &[]).repeated_ngrams >= 1);
         let same = vec![row("a", r, r)];
         assert_eq!(score_long(&same, 0, &[]).repeated_ngrams, 0);
+        // Substitutions create new n-grams once each; they are not repeats.
+        let subbed = vec![row("a", r, "sabah eve döndük ertesi gün okula başladık")];
+        assert_eq!(score_long(&subbed, 0, &[]).repeated_ngrams, 0);
     }
 
     #[test]

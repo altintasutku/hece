@@ -2,6 +2,7 @@
 //! IPC server.
 
 pub mod audio;
+pub mod decode;
 pub mod error;
 pub mod mel;
 pub mod tokens;

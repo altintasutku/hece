@@ -96,4 +96,39 @@ padded = np.pad(audio.astype(np.float32) / 32768.0, (0, pad))
 model = SileroVADModel(str(Path(get_assets_path()) / "silero_vad_v6.onnx"))
 probs = model(padded).reshape(-1)
 print("probs", probs.shape, float(probs.min()), float(probs.max()))
-(out / "vad_probs.json").write_text(json.dumps({"audio": audio.tolist(), "probs": [float(p) for p in probs]}))
+
+
+def call_with_batch(model, audio, encoder_batch_size, num_samples=512, context_size_samples=64):
+    """SileroVADModel.__call__ with a configurable batch size (it is a local there)."""
+    h = np.zeros((1, 1, 128), dtype="float32")
+    c = np.zeros((1, 1, 128), dtype="float32")
+    batched_audio = audio.reshape(-1, num_samples)
+    context = batched_audio[..., -context_size_samples:]
+    context[-1] = 0
+    context = np.roll(context, 1, 0)
+    batched_audio = np.concatenate([context, batched_audio], 1)
+    batched_audio = batched_audio.reshape(-1, num_samples + context_size_samples)
+    outputs = []
+    for i in range(0, batched_audio.shape[0], encoder_batch_size):
+        output, h, c = model.session.run(
+            None, {"input": batched_audio[i : i + encoder_batch_size], "h": h, "c": c}
+        )
+        outputs.append(output)
+    return np.concatenate(outputs, axis=0)
+
+
+# Sanity: the copy equals the original at the real batch size, and a small batch carries state.
+assert np.array_equal(call_with_batch(model, padded.copy(), 10000).reshape(-1), probs)
+SMALL_BATCH = 30
+probs_small = call_with_batch(model, padded.copy(), SMALL_BATCH).reshape(-1)
+print("max diff small vs full batch", float(np.abs(probs_small - probs).max()))
+(out / "vad_probs.json").write_text(
+    json.dumps(
+        {
+            "audio": audio.tolist(),
+            "probs": [float(p) for p in probs],
+            "small_batch": SMALL_BATCH,
+            "probs_small_batch": [float(p) for p in probs_small],
+        }
+    )
+)

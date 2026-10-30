@@ -2,6 +2,7 @@
 //!
 //! Ported from faster-whisper 1.2.1 (MIT), `vad.py` (`SileroVADModel`).
 
+use ort::ep;
 use ort::session::Session;
 use ort::value::Tensor;
 
@@ -10,6 +11,8 @@ use crate::error::EngineError;
 
 /// Samples of the previous window prepended to each window.
 const CONTEXT: usize = 64;
+/// Windows per model call (faster-whisper's `encoder_batch_size`).
+const ENCODER_BATCH: usize = 10_000;
 /// Silero hidden/cell state size.
 const STATE: usize = 128;
 
@@ -39,6 +42,9 @@ impl SileroVad {
         let env = ort::init().build().map_err(vad_err)?;
         let session = Session::builder(&env)
             .map_err(vad_err)?
+            // faster-whisper sets `enable_cpu_mem_arena = False`.
+            .with_execution_providers([ep::CPU::default().with_arena_allocator(false).build()])
+            .map_err(vad_err)?
             .with_intra_threads(1)
             .map_err(vad_err)?
             .with_inter_threads(1)
@@ -52,6 +58,16 @@ impl SileroVad {
     /// windows (an exact multiple adds none). All windows run as one batch with zero `h`/`c`,
     /// each window preceded by the last 64 samples of the previous one, as faster-whisper does.
     pub fn speech_probs(&mut self, audio: &[f32]) -> Result<Vec<f32>, EngineError> {
+        self.speech_probs_batched(audio, ENCODER_BATCH)
+    }
+
+    /// [`Self::speech_probs`] with an explicit number of windows per model call. The recurrent
+    /// state returned by one call feeds the next, like faster-whisper's `encoder_batch_size`.
+    fn speech_probs_batched(
+        &mut self,
+        audio: &[f32],
+        batch_windows: usize,
+    ) -> Result<Vec<f32>, EngineError> {
         let rows = audio.len().div_ceil(WINDOW);
         if rows == 0 {
             return Ok(Vec::new());
@@ -73,19 +89,31 @@ impl SileroVad {
             batch.extend_from_slice(&padded[r * WINDOW..(r + 1) * WINDOW]);
         }
 
-        let state = || Tensor::from_array(([1_usize, 1, STATE], vec![0.0_f32; STATE]));
-        let outputs = self
-            .session
-            .run(ort::inputs! {
-                "input" => Tensor::from_array(([rows, WINDOW + CONTEXT], batch)).map_err(vad_err)?,
-                "h" => state().map_err(vad_err)?,
-                "c" => state().map_err(vad_err)?,
-            })
-            .map_err(vad_err)?;
-        let (_, probs) = outputs["speech_probs"]
-            .try_extract_tensor::<f32>()
-            .map_err(vad_err)?;
-        Ok(probs.to_vec())
+        let mut h = vec![0.0_f32; STATE];
+        let mut c = vec![0.0_f32; STATE];
+        let mut probs = Vec::with_capacity(rows);
+        for chunk in batch.chunks(batch_windows * (WINDOW + CONTEXT)) {
+            let n = chunk.len() / (WINDOW + CONTEXT);
+            let state = |v: &[f32]| Tensor::from_array(([1_usize, 1, STATE], v.to_vec()));
+            let outputs = self
+                .session
+                .run(ort::inputs! {
+                    "input" => Tensor::from_array(([n, WINDOW + CONTEXT], chunk.to_vec())).map_err(vad_err)?,
+                    "h" => state(&h).map_err(vad_err)?,
+                    "c" => state(&c).map_err(vad_err)?,
+                })
+                .map_err(vad_err)?;
+            let (_, p) = outputs["speech_probs"]
+                .try_extract_tensor::<f32>()
+                .map_err(vad_err)?;
+            probs.extend_from_slice(p);
+            // The recurrent state is carried into the next batch.
+            let (_, hn) = outputs["hn"].try_extract_tensor::<f32>().map_err(vad_err)?;
+            let (_, cn) = outputs["cn"].try_extract_tensor::<f32>().map_err(vad_err)?;
+            h = hn.to_vec();
+            c = cn.to_vec();
+        }
+        Ok(probs)
     }
 
     /// Speech spans of `audio`: probabilities from [`Self::speech_probs`] fed to
@@ -107,6 +135,7 @@ impl SileroVad {
 }
 
 #[cfg(test)]
+#[expect(clippy::cast_possible_truncation, reason = "fixture decoding in tests")]
 mod tests {
     use super::*;
 
@@ -114,5 +143,41 @@ mod tests {
     fn silero_vad_is_send() {
         fn assert_send<T: Send>() {}
         assert_send::<SileroVad>();
+    }
+
+    #[test]
+    fn small_batches_carry_state_and_match_faster_whisper() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/vad_probs.json")).unwrap();
+        let audio: Vec<f32> = fixture["audio"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| f32::from(i16::try_from(v.as_i64().unwrap()).unwrap()) / 32768.0)
+            .collect();
+        let batch = usize::try_from(fixture["small_batch"].as_u64().unwrap()).unwrap();
+        let expected: Vec<f32> = fixture["probs_small_batch"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().unwrap() as f32)
+            .collect();
+        assert!(
+            expected.len() > batch * 2,
+            "fixture must span several batches"
+        );
+
+        let probs = SileroVad::new()
+            .unwrap()
+            .speech_probs_batched(&audio, batch)
+            .unwrap();
+
+        assert_eq!(probs.len(), expected.len());
+        let max_diff = probs
+            .iter()
+            .zip(&expected)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f32, f32::max);
+        assert!(max_diff < 1e-4, "max abs diff {max_diff}");
     }
 }

@@ -252,14 +252,14 @@ impl SpeechTimestampsMap {
     }
 
     /// Original-audio time for `t` seconds into the collected audio, rounded to 2 decimals like
-    /// faster-whisper. `is_end` makes a time exactly on a chunk end belong to that chunk.
+    /// faster-whisper. `is_end` makes a time exactly on a chunk end belong to that chunk. All
+    /// math is `f64` as in Python so boundary comparisons agree.
     #[must_use]
-    pub fn original_time(&self, t: f32, is_end: bool) -> f32 {
-        let t = f64::from(t);
+    pub fn original_time(&self, t: f64, is_end: bool) -> f64 {
         let offset = self
             .chunk_index(t, is_end)
             .map_or(0.0, |i| self.total_silence_before[i]);
-        round2_f32(offset + t)
+        round2(offset + t)
     }
 
     fn chunk_index(&self, t: f64, is_end: bool) -> Option<usize> {
@@ -274,10 +274,6 @@ impl SpeechTimestampsMap {
     }
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "timestamps are reported as f32"
-)]
-fn round2_f32(x: f64) -> f32 {
-    ((x * 100.0).round() / 100.0) as f32
+fn round2(x: f64) -> f64 {
+    (x * 100.0).round() / 100.0
 }

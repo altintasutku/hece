@@ -158,11 +158,28 @@ fn timestamps_map_restores_original_time() {
             end: 80_000,
         },
     ]);
-    assert!((map.original_time(0.5, false) - 1.5).abs() < 1e-6);
+    assert!((map.original_time(0.5, false) - 1.5).abs() < 1e-9);
     // 1.5 s lies in the second chunk: 1.5 + 3 s of removed silence.
-    assert!((map.original_time(1.5, false) - 4.5).abs() < 1e-6);
+    assert!((map.original_time(1.5, false) - 4.5).abs() < 1e-9);
     // An end exactly on the first chunk boundary belongs to the first chunk.
-    assert!((map.original_time(1.0, true) - 2.0).abs() < 1e-6);
+    assert!((map.original_time(1.0, true) - 2.0).abs() < 1e-9);
     // The same time as a start belongs to the second chunk.
-    assert!((map.original_time(1.0, false) - 4.0).abs() < 1e-6);
+    assert!((map.original_time(1.0, false) - 4.0).abs() < 1e-9);
+}
+
+#[test]
+fn timestamps_map_boundary_times_use_f64_sample_math() {
+    // Spans [0, 320) and [16000, 16320): the collected chunks end at samples 320 and 640.
+    // 0.02 s is exactly 320 samples in f64 math (values checked against faster-whisper).
+    let map = SpeechTimestampsMap::new(&[
+        SpeechSpan { start: 0, end: 320 },
+        SpeechSpan {
+            start: 16_000,
+            end: 16_320,
+        },
+    ]);
+    // End exactly on the first chunk boundary: stays in chunk 0 (no gap added).
+    assert!((map.original_time(0.02, true) - 0.02).abs() < 1e-9);
+    // The same time as a start belongs to chunk 1: + (16000 - 320) / 16000 = 0.98 s of silence.
+    assert!((map.original_time(0.02, false) - 1.0).abs() < 1e-9);
 }

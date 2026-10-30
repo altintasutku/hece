@@ -107,7 +107,16 @@ impl EngineConfig {
     /// Defaults: socket `$XDG_RUNTIME_DIR/hece/engine.sock`, idle TTL 30 min, connect 20 s,
     /// base request timeout 120 s.
     pub fn default_for(model_dir: PathBuf) -> Result<Self, EngineClientError> {
-        let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        Self::with_runtime_dir(model_dir, std::env::var_os("XDG_RUNTIME_DIR"))
+    }
+
+    /// Like [`EngineConfig::default_for`] with the runtime directory given explicitly; unset or
+    /// empty is [`EngineClientError::NoRuntimeDir`] (there is no `/tmp` fallback).
+    pub fn with_runtime_dir(
+        model_dir: PathBuf,
+        runtime_dir: Option<std::ffi::OsString>,
+    ) -> Result<Self, EngineClientError> {
+        let runtime = runtime_dir
             .filter(|v| !v.is_empty())
             .ok_or(EngineClientError::NoRuntimeDir)?;
         Ok(Self {
@@ -196,29 +205,56 @@ impl std::fmt::Debug for EngineClient {
     }
 }
 
-async fn write_request(conn: &mut UnixStream, req: &Request) -> Result<(), EngineClientError> {
-    let frame = encode_frame(req).map_err(|e| EngineClientError::Protocol(e.code().to_owned()))?;
-    conn.write_all(&frame)
-        .await
-        .map_err(|_| EngineClientError::Crashed)
+/// Where a round trip failed; only failures before any response byte may be retried.
+enum Fail {
+    BeforeResponse(EngineClientError),
+    Later(EngineClientError),
 }
 
-async fn read_response(conn: &mut UnixStream) -> Result<Response, EngineClientError> {
-    let mut header = [0u8; 4];
-    conn.read_exact(&mut header)
+impl Fail {
+    fn into_error(self) -> EngineClientError {
+        match self {
+            Self::BeforeResponse(e) | Self::Later(e) => e,
+        }
+    }
+}
+
+fn io_error(e: &std::io::Error) -> EngineClientError {
+    use std::io::ErrorKind::{BrokenPipe, ConnectionAborted, ConnectionReset, UnexpectedEof};
+    match e.kind() {
+        UnexpectedEof | ConnectionReset | ConnectionAborted | BrokenPipe => {
+            EngineClientError::Crashed
+        }
+        kind => EngineClientError::Io(format!("{kind:?}")),
+    }
+}
+
+fn protocol_error(e: &hece_core::ipc::IpcError) -> EngineClientError {
+    EngineClientError::Protocol(e.code().to_owned())
+}
+
+async fn round_trip(conn: &mut UnixStream, req: &Request) -> Result<Response, Fail> {
+    let frame = encode_frame(req).map_err(|e| Fail::BeforeResponse(protocol_error(&e)))?;
+    conn.write_all(&frame)
         .await
-        .map_err(|_| EngineClientError::Crashed)?;
-    let len = frame_len(header).map_err(|e| EngineClientError::Protocol(e.code().to_owned()))?;
+        .map_err(|e| Fail::BeforeResponse(io_error(&e)))?;
+    let mut header = [0u8; 4];
+    let mut got = 0;
+    while got < header.len() {
+        match conn.read(&mut header[got..]).await {
+            Ok(0) if got == 0 => return Err(Fail::BeforeResponse(EngineClientError::Crashed)),
+            Ok(0) => return Err(Fail::Later(EngineClientError::Crashed)),
+            Ok(n) => got += n,
+            Err(e) if got == 0 => return Err(Fail::BeforeResponse(io_error(&e))),
+            Err(e) => return Err(Fail::Later(io_error(&e))),
+        }
+    }
+    let len = frame_len(header).map_err(|e| Fail::Later(protocol_error(&e)))?;
     let mut body = vec![0u8; len];
     conn.read_exact(&mut body)
         .await
-        .map_err(|_| EngineClientError::Crashed)?;
-    decode_body(&body).map_err(|e| EngineClientError::Protocol(e.code().to_owned()))
-}
-
-async fn round_trip(conn: &mut UnixStream, req: &Request) -> Result<Response, EngineClientError> {
-    write_request(conn, req).await?;
-    read_response(conn).await
+        .map_err(|e| Fail::Later(io_error(&e)))?;
+    decode_body(&body).map_err(|e| Fail::Later(protocol_error(&e)))
 }
 
 impl EngineClient {
@@ -279,22 +315,21 @@ impl EngineClient {
         }
     }
 
-    /// Asks a running worker to exit. Does nothing if no worker is reachable.
+    /// Asks a running worker to exit. Succeeds when no worker is reachable or it already died.
     pub async fn shutdown(&self) -> Result<(), EngineClientError> {
-        let result = self
-            .call(&Request::Shutdown, self.cfg.base_timeout, false)
-            .await;
         let mut state = self.state.lock().await;
+        let result = self
+            .call_locked(&mut state, &Request::Shutdown, self.cfg.base_timeout, false)
+            .await;
         state.conn = None;
         state.child = None;
-        match result? {
-            Some(Response::Bye) | None => Ok(()),
-            Some(other) => Err(unexpected(&other)),
+        match result {
+            Ok(Some(Response::Bye) | None) | Err(EngineClientError::Crashed) => Ok(()),
+            Ok(Some(other)) => Err(unexpected(&other)),
+            Err(e) => Err(e),
         }
     }
 
-    /// Sends one request on the (possibly new) connection. `Ok(None)` means no worker was
-    /// reachable and spawning was not allowed. The connection is kept only after a clean answer.
     async fn call(
         &self,
         req: &Request,
@@ -302,37 +337,63 @@ impl EngineClient {
         allow_spawn: bool,
     ) -> Result<Option<Response>, EngineClientError> {
         let mut state = self.state.lock().await;
-        let mut conn = if let Some(conn) = state.conn.take() {
-            conn
-        } else {
-            match self.connect(&mut state, allow_spawn).await? {
-                Some(conn) => conn,
-                None => return Ok(None),
-            }
-        };
-        match timeout(limit, round_trip(&mut conn, req)).await {
-            Ok(Ok(Response::Error { code })) => {
-                state.conn = Some(conn);
-                Err(EngineClientError::Engine { code })
-            }
-            Ok(Ok(resp)) => {
-                state.conn = Some(conn);
-                Ok(Some(resp))
-            }
-            Ok(Err(e)) => {
-                tracing::warn!(code = e.code(), "engine request failed");
-                Err(e)
-            }
-            Err(_) => {
-                tracing::warn!("engine request timed out");
-                if let Some(child) = state.child.as_mut()
-                    && let Err(e) = child.kill().await
-                {
-                    tracing::warn!(kind = ?e.kind(), "failed to kill timed-out engine");
+        self.call_locked(&mut state, req, limit, allow_spawn).await
+    }
+
+    /// Sends one request on the (possibly new) connection. `Ok(None)` means no worker was
+    /// reachable and spawning was not allowed. The connection is kept only after a clean answer.
+    /// A reused connection that fails before any response byte (e.g. the worker exited on its
+    /// idle TTL) is replaced once and the request is resent.
+    async fn call_locked(
+        &self,
+        state: &mut State,
+        req: &Request,
+        limit: Duration,
+        allow_spawn: bool,
+    ) -> Result<Option<Response>, EngineClientError> {
+        let mut retried = false;
+        loop {
+            let (mut conn, reused) = if let Some(conn) = state.conn.take() {
+                (conn, true)
+            } else {
+                match self.connect(state, allow_spawn).await? {
+                    Some(conn) => (conn, false),
+                    None => return Ok(None),
                 }
-                state.child = None;
-                Err(EngineClientError::Timeout)
+            };
+            match timeout(limit, round_trip(&mut conn, req)).await {
+                Ok(Ok(Response::Error { code })) => {
+                    state.conn = Some(conn);
+                    return Err(EngineClientError::Engine { code });
+                }
+                Ok(Ok(resp)) => {
+                    state.conn = Some(conn);
+                    return Ok(Some(resp));
+                }
+                Ok(Err(Fail::BeforeResponse(EngineClientError::Crashed))) if reused && !retried => {
+                    tracing::debug!("stale engine connection, reconnecting");
+                    retried = true;
+                }
+                Ok(Err(fail)) => {
+                    let e = fail.into_error();
+                    tracing::warn!(code = e.code(), "engine request failed");
+                    return Err(e);
+                }
+                Err(_) => {
+                    tracing::warn!("engine request timed out");
+                    Self::kill_child(state).await;
+                    return Err(EngineClientError::Timeout);
+                }
             }
+        }
+    }
+
+    /// Kills and reaps the worker this client started, if any.
+    async fn kill_child(state: &mut State) {
+        if let Some(mut child) = state.child.take()
+            && let Err(e) = child.kill().await
+        {
+            tracing::warn!(kind = ?e.kind(), "failed to kill engine");
         }
     }
 
@@ -360,6 +421,8 @@ impl EngineClient {
                 continue;
             }
             if Instant::now() >= deadline {
+                // A worker we started that never bound the socket must not pile up.
+                Self::kill_child(state).await;
                 return Err(EngineClientError::ConnectTimeout);
             }
             sleep(RETRY_INTERVAL).await;
@@ -369,7 +432,8 @@ impl EngineClient {
             round_trip(&mut stream, &Request::Hello),
         )
         .await
-        .map_err(|_| EngineClientError::ConnectTimeout)??;
+        .map_err(|_| EngineClientError::ConnectTimeout)?
+        .map_err(Fail::into_error)?;
         match hello {
             Response::Hello { protocol, .. } if protocol == PROTOCOL_VERSION => Ok(Some(stream)),
             Response::Hello { protocol, .. } => {
@@ -397,7 +461,11 @@ impl EngineClient {
                     status.code()
                 )))
             }
-            Ok(None) | Err(_) => Ok(()),
+            Ok(None) => Ok(()),
+            Err(e) => {
+                tracing::debug!(kind = ?e.kind(), "try_wait on engine child failed");
+                Ok(())
+            }
         }
     }
 }

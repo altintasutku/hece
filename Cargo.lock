@@ -544,7 +544,6 @@ name = "hece-providers"
 version = "0.1.0"
 dependencies = [
  "hece-core",
- "serde_json",
  "thiserror",
  "tokio",
  "tracing",

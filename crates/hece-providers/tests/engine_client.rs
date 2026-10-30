@@ -23,6 +23,7 @@ enum Mode {
     Silent,
     BadProtocol,
     Ordered,
+    DropAfterAnswer,
 }
 
 struct FakeSpawner {
@@ -31,6 +32,21 @@ struct FakeSpawner {
     spawns: AtomicUsize,
     seen: Arc<Mutex<Vec<Request>>>,
     overlap: Arc<AtomicBool>,
+    pids: Mutex<Vec<u32>>,
+}
+
+fn pid_alive(pid: u32) -> bool {
+    Path::new(&format!("/proc/{pid}")).exists()
+}
+
+async fn wait_gone(pid: u32) {
+    for _ in 0..100 {
+        if !pid_alive(pid) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("process {pid} still alive");
 }
 
 impl Spawner for FakeSpawner {
@@ -43,15 +59,24 @@ impl Spawner for FakeSpawner {
         let socket = self.socket.clone();
         let seen = Arc::clone(&self.seen);
         let overlap = Arc::clone(&self.overlap);
-        tokio::spawn(async move {
+        let server = tokio::spawn(async move {
             serve(listener, mode, seen, overlap).await;
             let _ = std::fs::remove_file(&socket);
         });
-        Command::new("sleep")
+        let child = Command::new("sleep")
             .arg("60")
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| EngineClientError::Spawn(e.to_string()))
+            .map_err(|e| EngineClientError::Spawn(e.to_string()))?;
+        if let Some(pid) = child.id() {
+            self.pids.lock().unwrap().push(pid);
+            // The fake worker dies with its process, like a real one.
+            tokio::spawn(async move {
+                wait_gone(pid).await;
+                server.abort();
+            });
+        }
+        Ok(child)
     }
 }
 
@@ -125,6 +150,10 @@ async fn serve(
                         }
                         write_resp(&mut s, &transcript(t.language.as_deref().unwrap_or(""))).await;
                     }
+                    Mode::DropAfterAnswer => {
+                        write_resp(&mut s, &transcript("hello")).await;
+                        break;
+                    }
                     _ => write_resp(&mut s, &transcript("hello")).await,
                 },
             }
@@ -169,6 +198,7 @@ fn fixture(name: &str, modes: Vec<Mode>, base: Duration) -> Fixture {
         spawns: AtomicUsize::new(0),
         seen: Arc::default(),
         overlap: Arc::default(),
+        pids: Mutex::default(),
     });
     let client = Arc::new(EngineClient::new(cfg(&socket, base), spawner.clone()));
     Fixture {
@@ -271,4 +301,127 @@ async fn process_spawner_missing_engine() {
     let err = ProcessSpawner.spawn(&c).unwrap_err();
     assert!(matches!(err, EngineClientError::EngineMissing), "{err}");
     assert_eq!(err.code(), "engine_missing");
+}
+
+#[tokio::test]
+async fn stale_connection_is_replaced_transparently() {
+    let f = fixture("stale", vec![Mode::DropAfterAnswer], Duration::from_secs(5));
+    assert_eq!(tx(&f.client, None).await.unwrap().text, "hello");
+    assert_eq!(tx(&f.client, None).await.unwrap().text, "hello");
+    assert_eq!(f.spawner.spawns.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn recovers_after_timeout() {
+    let f = fixture(
+        "recover",
+        vec![Mode::Silent, Mode::Normal],
+        Duration::from_millis(200),
+    );
+    assert!(matches!(
+        tx(&f.client, None).await,
+        Err(EngineClientError::Timeout)
+    ));
+    let pid = f.spawner.pids.lock().unwrap()[0];
+    wait_gone(pid).await;
+    // Let the fake worker notice its process is gone.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(tx(&f.client, None).await.unwrap().text, "hello");
+    assert_eq!(f.spawner.spawns.load(Ordering::SeqCst), 2);
+}
+
+struct NeverBinds {
+    pid: Mutex<Option<u32>>,
+}
+
+impl Spawner for NeverBinds {
+    fn spawn(&self, _cfg: &EngineConfig) -> Result<Child, EngineClientError> {
+        let child = Command::new("sleep")
+            .arg("30")
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| EngineClientError::Spawn(e.to_string()))?;
+        *self.pid.lock().unwrap() = child.id();
+        Ok(child)
+    }
+}
+
+#[tokio::test]
+async fn connect_timeout_kills_the_unbound_worker() {
+    let mut c = cfg(Path::new("/tmp/hec-never.sock"), Duration::from_secs(1));
+    c.connect_timeout = Duration::from_millis(300);
+    let spawner = Arc::new(NeverBinds {
+        pid: Mutex::new(None),
+    });
+    let client = EngineClient::new(c, spawner.clone());
+    let err = client.prewarm().await.unwrap_err();
+    assert!(matches!(err, EngineClientError::ConnectTimeout), "{err}");
+    let pid = spawner.pid.lock().unwrap().unwrap();
+    assert!(!pid_alive(pid));
+}
+
+struct OtherOwnsSocket {
+    socket: PathBuf,
+    spawns: AtomicUsize,
+}
+
+impl Spawner for OtherOwnsSocket {
+    fn spawn(&self, _cfg: &EngineConfig) -> Result<Child, EngineClientError> {
+        self.spawns.fetch_add(1, Ordering::SeqCst);
+        let socket = self.socket.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let listener = UnixListener::bind(&socket).unwrap();
+            serve(listener, Mode::Normal, Arc::default(), Arc::default()).await;
+        });
+        Command::new("sh")
+            .args(["-c", "exit 3"])
+            .spawn()
+            .map_err(|e| EngineClientError::Spawn(e.to_string()))
+    }
+}
+
+#[tokio::test]
+async fn exit_code_3_keeps_retrying_until_the_other_worker_answers() {
+    let f = fixture("exit3", vec![Mode::Normal], Duration::from_secs(5));
+    let spawner = Arc::new(OtherOwnsSocket {
+        socket: f.dir.join("o.sock"),
+        spawns: AtomicUsize::new(0),
+    });
+    let client = EngineClient::new(
+        cfg(&f.dir.join("o.sock"), Duration::from_secs(5)),
+        spawner.clone(),
+    );
+    assert_eq!(tx(&client, None).await.unwrap().text, "hello");
+    assert_eq!(spawner.spawns.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn shutdown_without_worker_is_ok_and_with_worker_sends_shutdown() {
+    let f = fixture("shutdown", vec![Mode::Normal], Duration::from_secs(5));
+    f.client.shutdown().await.unwrap();
+    assert_eq!(f.spawner.spawns.load(Ordering::SeqCst), 0);
+    tx(&f.client, None).await.unwrap();
+    f.client.shutdown().await.unwrap();
+    assert!(
+        f.spawner
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| matches!(r, Request::Shutdown))
+    );
+}
+
+#[test]
+fn default_config_needs_a_runtime_dir() {
+    let m = PathBuf::from("/models/m");
+    for dir in [None, Some(std::ffi::OsString::new())] {
+        let err = EngineConfig::with_runtime_dir(m.clone(), dir).unwrap_err();
+        assert!(matches!(err, EngineClientError::NoRuntimeDir));
+        assert_eq!(err.code(), "no_runtime_dir");
+    }
+    let c = EngineConfig::with_runtime_dir(m, Some("/run/user/1".into())).unwrap();
+    assert_eq!(c.socket, Path::new("/run/user/1/hece/engine.sock"));
+    assert_eq!(c.compute, "int8_float16");
 }

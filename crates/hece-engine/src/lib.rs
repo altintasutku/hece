@@ -4,4 +4,5 @@
 pub mod audio;
 pub mod error;
 pub mod mel;
+pub mod tokens;
 pub mod vad;

@@ -175,7 +175,7 @@ mod tests {
         let f = filter_segments(vec![]);
         assert_eq!(f.text, "");
         assert_eq!(f.dropped, 0);
-        assert!(f.kept.is_empty());
+        assert_eq!(f.kept, [] as [Segment; 0]);
     }
 
     #[test]

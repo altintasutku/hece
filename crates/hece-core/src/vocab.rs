@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn parse_exclusion_later_removes_earlier_term() {
         let vocab = Vocabulary::parse("Tauri\nRust\n!Tauri\n- !rust\n");
-        assert!(vocab.terms.is_empty());
+        assert_eq!(vocab.terms, [] as [String; 0]);
         assert_eq!(Vocabulary::parse("!Tauri\nTauri\nRust").terms, ["Rust"]);
     }
 
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn parse_empty_is_empty() {
-        assert!(Vocabulary::parse("").terms.is_empty());
+        assert_eq!(Vocabulary::parse("").terms, [] as [String; 0]);
     }
 
     #[test]

@@ -10,12 +10,15 @@ use std::io::{ErrorKind, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::sync::PoisonError;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use hece_core::Transcript;
 use hece_core::ipc::{
-    IpcError, PROTOCOL_VERSION, Request, Response, TranscribeRequest, decode_body, encode_frame,
-    frame_len,
+    CONN_IDLE_TIMEOUT, IpcError, PROTOCOL_VERSION, Request, Response, TranscribeRequest,
+    decode_body, encode_frame, frame_len,
 };
 
 use crate::audio::SAMPLE_RATE;
@@ -23,16 +26,22 @@ use crate::engine::ComputeKind;
 use crate::error::EngineError;
 
 /// How long a connection may stay silent between frames before it is closed.
-const READ_TIMEOUT: Duration = Duration::from_secs(30);
+const READ_TIMEOUT: Duration = CONN_IDLE_TIMEOUT;
 /// Pause between accept polls while idle.
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
+/// How often the watchdog checks its deadline.
+const WATCHDOG_POLL: Duration = Duration::from_millis(100);
 /// Default idle time before the worker exits.
 pub const DEFAULT_IDLE_TTL: Duration = Duration::from_mins(30);
-/// Rendered prompts kept before the cache is emptied.
 /// Most bytes read from a client after rejecting an oversized frame.
 const DRAIN_LIMIT: usize = 128 * 1024 * 1024;
 /// Longest time spent draining such a client.
 const DRAIN_TIME: Duration = Duration::from_secs(2);
+/// Fixed part of the per-request watchdog deadline.
+pub const WATCHDOG_BASE: Duration = Duration::from_secs(300);
+/// Exit code of a worker killed by its own watchdog.
+pub const EXIT_WATCHDOG: i32 = 5;
+/// Rendered prompts kept before the cache is emptied.
 const PROMPT_CACHE_LIMIT: usize = 64;
 
 /// A speech-to-text engine the server can drive.
@@ -232,8 +241,79 @@ enum Closed {
     Shutdown,
 }
 
-/// Accepts connections until the worker has been idle for `idle_ttl` or a client sends
-/// `Shutdown`. The idle clock restarts after every response and never fires during a request.
+/// Whether a request deadline has passed.
+#[must_use]
+pub fn expired(deadline: Option<Instant>, now: Instant) -> bool {
+    deadline.is_some_and(|d| now >= d)
+}
+
+/// Settings of [`serve_with`].
+pub struct ServeOptions {
+    /// Idle time before the worker exits.
+    pub idle_ttl: Duration,
+    /// Watchdog allowance per request before the audio-length part (default [`WATCHDOG_BASE`]).
+    pub watchdog_base: Duration,
+    /// Called when a request outlives its deadline; the default exits with [`EXIT_WATCHDOG`].
+    pub on_expire: Box<dyn Fn() + Send + Sync>,
+}
+
+impl ServeOptions {
+    /// Defaults with the given idle TTL: a 300 s watchdog base that exits the process.
+    #[must_use]
+    pub fn new(idle_ttl: Duration) -> Self {
+        Self {
+            idle_ttl,
+            watchdog_base: WATCHDOG_BASE,
+            on_expire: Box::new(|| std::process::exit(EXIT_WATCHDOG)),
+        }
+    }
+}
+
+impl std::fmt::Debug for ServeOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServeOptions")
+            .field("idle_ttl", &self.idle_ttl)
+            .field("watchdog_base", &self.watchdog_base)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Deadline of the request being served, shared with the watchdog thread.
+type Deadline = Mutex<Option<Instant>>;
+
+fn set_deadline(deadline: &Deadline, value: Option<Instant>) {
+    *deadline.lock().unwrap_or_else(PoisonError::into_inner) = value;
+}
+
+/// Watchdog allowance for `request`: base plus two seconds per second of audio. Requests that
+/// do no engine work have none.
+fn budget(request: &Request, base: Duration) -> Option<Duration> {
+    match request {
+        Request::Load(_) => Some(base),
+        Request::Transcribe(req) => {
+            // Decoded bytes are 3/4 of the base64 length; two bytes per sample.
+            let samples = req.audio.0.len() / 4 * 3 / 2;
+            let audio_s = u64::try_from(samples / SAMPLE_RATE).unwrap_or(u64::MAX);
+            Some(base.saturating_add(Duration::from_secs(audio_s.saturating_mul(2))))
+        }
+        Request::Hello | Request::Shutdown => None,
+    }
+}
+
+/// Fires `on_expire` once if the shared deadline passes while a request still runs.
+fn watchdog_loop(deadline: &Deadline, done: &AtomicBool, on_expire: &(dyn Fn() + Send + Sync)) {
+    while !done.load(Ordering::Acquire) {
+        std::thread::park_timeout(WATCHDOG_POLL);
+        let current = *deadline.lock().unwrap_or_else(PoisonError::into_inner);
+        if expired(current, Instant::now()) {
+            tracing::error!("engine.watchdog");
+            set_deadline(deadline, None);
+            on_expire();
+        }
+    }
+}
+
+/// [`serve_with`] with default options, taking ownership of the listener.
 #[expect(
     clippy::needless_pass_by_value,
     reason = "owning the listener closes the socket when serve returns"
@@ -243,14 +323,54 @@ pub fn serve<B: Backend>(
     backend: &mut B,
     idle_ttl: Duration,
 ) -> Result<(), EngineError> {
+    serve_with(&listener, backend, &ServeOptions::new(idle_ttl))
+}
+
+/// Accepts connections until the worker has been idle for `opts.idle_ttl` or a client sends
+/// `Shutdown`. The idle clock restarts after every response and never fires during a request.
+/// A watchdog thread calls `opts.on_expire` if a request outlives its deadline.
+pub fn serve_with<B: Backend>(
+    listener: &UnixListener,
+    backend: &mut B,
+    opts: &ServeOptions,
+) -> Result<(), EngineError> {
     listener
         .set_nonblocking(true)
         .map_err(|e| EngineError::Socket(e.to_string()))?;
+    let deadline: Deadline = Mutex::new(None);
+    let done = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        let watchdog = scope.spawn(|| watchdog_loop(&deadline, &done, &*opts.on_expire));
+        let watch = Watch {
+            deadline: &deadline,
+            base: opts.watchdog_base,
+        };
+        let result = accept_loop(listener, backend, opts.idle_ttl, &watch);
+        done.store(true, Ordering::Release);
+        watchdog.thread().unpark();
+        result
+    })
+}
+
+/// The watchdog state a connection handler updates around each request.
+struct Watch<'a> {
+    deadline: &'a Deadline,
+    base: Duration,
+}
+
+fn accept_loop<B: Backend>(
+    listener: &UnixListener,
+    backend: &mut B,
+    idle_ttl: Duration,
+    watch: &Watch<'_>,
+) -> Result<(), EngineError> {
     let mut last_activity = Instant::now();
     loop {
         match listener.accept() {
             Ok((stream, _)) => {
-                if let Closed::Shutdown = handle_connection(stream, backend, &mut last_activity) {
+                if let Closed::Shutdown =
+                    handle_connection(stream, backend, &mut last_activity, watch)
+                {
                     return Ok(());
                 }
             }
@@ -272,6 +392,7 @@ fn handle_connection<B: Backend>(
     mut stream: UnixStream,
     backend: &mut B,
     last_activity: &mut Instant,
+    watch: &Watch<'_>,
 ) -> Closed {
     if stream.set_nonblocking(false).is_err()
         || stream.set_read_timeout(Some(READ_TIMEOUT)).is_err()
@@ -293,7 +414,12 @@ fn handle_connection<B: Backend>(
                 return Closed::Done;
             }
         };
+        set_deadline(
+            watch.deadline,
+            budget(&request, watch.base).map(|b| Instant::now() + b),
+        );
         let (response, next) = handle(request, backend);
+        set_deadline(watch.deadline, None);
         if write_response(&mut stream, &response).is_err() {
             return Closed::Done;
         }
@@ -398,7 +524,7 @@ fn handle<B: Backend>(request: Request, backend: &mut B) -> (Response, Next) {
                         Ok(()) => {
                             let load_ms = millis(started.elapsed());
                             tracing::info!(
-                                model_dir = %load.model_dir.display(),
+                                model = load.model_dir.file_name().and_then(|n| n.to_str()),
                                 load_ms,
                                 "engine.loaded"
                             );

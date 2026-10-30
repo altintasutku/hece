@@ -21,7 +21,7 @@ use hece_core::ipc::{
 };
 use hece_engine::engine::ComputeKind;
 use hece_engine::error::EngineError;
-use hece_engine::server::{Backend, ServeArgs, serve};
+use hece_engine::server::{Backend, ServeArgs, ServeOptions, expired, serve, serve_with};
 use hece_engine::socket::{BindError, Bound, bind, socket_path_from};
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -475,4 +475,66 @@ fn serve_args_parse() {
     assert!(args(&["--socket"]).is_err());
     assert!(args(&["--bogus"]).is_err());
     assert!(args(&["--idle-ttl-secs", "0"]).is_err());
+}
+
+#[test]
+fn expired_compares_against_now() {
+    let now = Instant::now();
+    assert!(!expired(None, now));
+    assert!(!expired(Some(now + Duration::from_secs(1)), now));
+    assert!(expired(Some(now), now));
+}
+
+#[test]
+fn watchdog_fires_when_a_request_outlives_its_deadline() {
+    let dir = TempDir::new();
+    let Bound { listener, lock } = bind(&dir.sock()).unwrap();
+    let fired = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let hook = Arc::clone(&fired);
+    let handle = thread::spawn(move || {
+        let _lock = lock;
+        let mut fake = Fake {
+            delay: Duration::from_secs(1),
+            ..Fake::default()
+        };
+        let opts = ServeOptions {
+            idle_ttl: LONG,
+            watchdog_base: Duration::from_millis(200),
+            on_expire: Box::new(move || hook.store(true, Ordering::SeqCst)),
+        };
+        let res = serve_with(&listener, &mut fake, &opts);
+        (res, Instant::now())
+    });
+    let mut s = connect(&dir);
+    send(&mut s, &transcribe_req(&[1]));
+    thread::sleep(Duration::from_millis(600));
+    assert!(fired.load(Ordering::SeqCst), "watchdog did not fire");
+    assert!(matches!(recv(&mut s), Response::Transcript(_)));
+    drop(s);
+    shutdown(&dir, handle);
+}
+
+#[test]
+fn watchdog_stays_quiet_for_fast_requests() {
+    let dir = TempDir::new();
+    let Bound { listener, lock } = bind(&dir.sock()).unwrap();
+    let fired = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let hook = Arc::clone(&fired);
+    let handle = thread::spawn(move || {
+        let _lock = lock;
+        let opts = ServeOptions {
+            idle_ttl: LONG,
+            watchdog_base: Duration::from_millis(200),
+            on_expire: Box::new(move || hook.store(true, Ordering::SeqCst)),
+        };
+        let res = serve_with(&listener, &mut Fake::default(), &opts);
+        (res, Instant::now())
+    });
+    let mut s = connect(&dir);
+    send(&mut s, &transcribe_req(&[1]));
+    assert!(matches!(recv(&mut s), Response::Transcript(_)));
+    thread::sleep(Duration::from_millis(500));
+    assert!(!fired.load(Ordering::SeqCst));
+    drop(s);
+    shutdown(&dir, handle);
 }

@@ -24,6 +24,7 @@ enum Mode {
     BadProtocol,
     Ordered,
     DropAfterAnswer,
+    SlowHello,
 }
 
 struct FakeSpawner {
@@ -113,6 +114,9 @@ async fn serve(
             seen.lock().unwrap().push(req.clone());
             match req {
                 Request::Hello => {
+                    if matches!(mode, Mode::SlowHello) {
+                        tokio::time::sleep(Duration::from_millis(600)).await;
+                    }
                     let protocol = if matches!(mode, Mode::BadProtocol) {
                         2
                     } else {
@@ -182,10 +186,20 @@ fn cfg(socket: &Path, base: Duration) -> EngineConfig {
         idle_ttl: Duration::from_secs(60),
         connect_timeout: Duration::from_secs(5),
         base_timeout: base,
+        reconnect_after: Duration::from_secs(25),
     }
 }
 
 fn fixture(name: &str, modes: Vec<Mode>, base: Duration) -> Fixture {
+    fixture_with(name, modes, base, |_| {})
+}
+
+fn fixture_with(
+    name: &str,
+    modes: Vec<Mode>,
+    base: Duration,
+    tweak: impl FnOnce(&mut EngineConfig),
+) -> Fixture {
     use std::os::unix::fs::DirBuilderExt;
     let dir = std::env::temp_dir().join(format!("hec-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -200,7 +214,9 @@ fn fixture(name: &str, modes: Vec<Mode>, base: Duration) -> Fixture {
         overlap: Arc::default(),
         pids: Mutex::default(),
     });
-    let client = Arc::new(EngineClient::new(cfg(&socket, base), spawner.clone()));
+    let mut config = cfg(&socket, base);
+    tweak(&mut config);
+    let client = Arc::new(EngineClient::new(config, spawner.clone()));
     Fixture {
         dir,
         client,
@@ -307,8 +323,96 @@ async fn process_spawner_missing_engine() {
 async fn stale_connection_is_replaced_transparently() {
     let f = fixture("stale", vec![Mode::DropAfterAnswer], Duration::from_secs(5));
     assert_eq!(tx(&f.client, None).await.unwrap().text, "hello");
+    // Give the fake worker time to close its side.
+    tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(tx(&f.client, None).await.unwrap().text, "hello");
     assert_eq!(f.spawner.spawns.load(Ordering::SeqCst), 1);
+}
+
+fn count(f: &Fixture, pred: impl Fn(&Request) -> bool) -> usize {
+    f.spawner
+        .seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| pred(r))
+        .count()
+}
+
+#[tokio::test]
+async fn crash_while_waiting_for_the_response_is_not_resent() {
+    let f = fixture(
+        "noresend",
+        vec![Mode::CrashOnTranscribe],
+        Duration::from_secs(5),
+    );
+    f.client.prewarm().await.unwrap();
+    let err = tx(&f.client, None).await.unwrap_err();
+    assert!(matches!(err, EngineClientError::Crashed), "{err}");
+    assert_eq!(count(&f, |r| matches!(r, Request::Transcribe(_))), 1);
+}
+
+#[tokio::test]
+async fn idle_connection_is_dropped_before_sending() {
+    let f = fixture_with("idle", vec![Mode::Normal], Duration::from_secs(5), |c| {
+        c.reconnect_after = Duration::from_millis(100);
+    });
+    tx(&f.client, None).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    tx(&f.client, None).await.unwrap();
+    assert_eq!(count(&f, |r| matches!(r, Request::Hello)), 2);
+    assert_eq!(f.spawner.spawns.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn hello_waits_longer_than_the_connect_timeout() {
+    let f = fixture_with(
+        "slowhello",
+        vec![Mode::SlowHello],
+        Duration::from_secs(5),
+        |c| {
+            c.connect_timeout = Duration::from_millis(300);
+        },
+    );
+    assert_eq!(tx(&f.client, None).await.unwrap().text, "hello");
+}
+
+#[tokio::test]
+async fn oversized_audio_is_rejected_before_sending() {
+    let f = fixture("toolong", vec![Mode::Normal], Duration::from_secs(5));
+    let audio = vec![0i16; hece_core::ipc::MAX_AUDIO_SAMPLES + 1];
+    let err = f
+        .client
+        .transcribe(&audio, None, None, "", 0)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, EngineClientError::InvalidAudio), "{err}");
+    assert_eq!(err.code(), "invalid_audio");
+    assert_eq!(f.spawner.spawns.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn framing_error_drops_the_connection() {
+    let f = fixture(
+        "framing",
+        vec![Mode::ErrorCode("bad_json")],
+        Duration::from_secs(5),
+    );
+    assert!(tx(&f.client, None).await.is_err());
+    assert!(tx(&f.client, None).await.is_err());
+    assert_eq!(count(&f, |r| matches!(r, Request::Hello)), 2);
+}
+
+#[tokio::test]
+async fn backend_error_keeps_the_connection() {
+    let f = fixture(
+        "keep",
+        vec![Mode::ErrorCode("decode_failed")],
+        Duration::from_secs(5),
+    );
+    assert!(tx(&f.client, None).await.is_err());
+    assert!(tx(&f.client, None).await.is_err());
+    assert_eq!(count(&f, |r| matches!(r, Request::Hello)), 1);
 }
 
 #[tokio::test]

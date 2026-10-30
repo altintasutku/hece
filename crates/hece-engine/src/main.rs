@@ -1,7 +1,7 @@
 //! Hece engine worker binary: `hece-engine serve` runs the unix socket worker.
 //!
 //! Exit codes: 0 normal, 2 built without CUDA, 3 another worker is running, 4 socket or
-//! runtime-dir error, 64 bad command line.
+//! runtime-dir error, 5 killed by the request watchdog, 64 bad command line.
 
 use std::process::ExitCode;
 
@@ -14,7 +14,7 @@ fn main() -> ExitCode {
 
 #[cfg(feature = "cuda")]
 fn main() -> ExitCode {
-    use hece_engine::server::{ArgsError, CudaBackend, ServeArgs, serve};
+    use hece_engine::server::{ArgsError, CudaBackend, ServeArgs, ServeOptions, serve_with};
     use hece_engine::socket::{BindError, bind, socket_path};
 
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -64,15 +64,21 @@ fn main() -> ExitCode {
             return ExitCode::from(4);
         }
     };
+    tracing::debug!(socket = %path.display(), "engine.socket");
     tracing::info!(
-        socket = %path.display(),
         idle_ttl_secs = serve_args.idle_ttl.as_secs(),
         "engine.start"
     );
     let mut backend = CudaBackend::new();
-    let result = serve(bound.listener, &mut backend, serve_args.idle_ttl);
-    // Leave no stale file behind on a normal exit.
+    let result = serve_with(
+        &bound.listener,
+        &mut backend,
+        &ServeOptions::new(serve_args.idle_ttl),
+    );
+    // Remove the socket file while the listener is still open and the lock is held, so a
+    // client never connects to a file whose listener is already gone.
     let _ = std::fs::remove_file(&path);
+    drop(bound);
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

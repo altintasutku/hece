@@ -2,6 +2,7 @@
 //! writes and use these helpers for the codec.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
@@ -17,6 +18,9 @@ pub const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_AUDIO_SAMPLES: usize = 16_000 * 60 * 11;
 /// Protocol version announced in [`Response::Hello`].
 pub const PROTOCOL_VERSION: u32 = 1;
+/// How long the worker keeps a connection open without a frame. Clients should reconnect
+/// before an idle connection reaches this age.
+pub const CONN_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Compute type used when a request does not name one.
 pub const DEFAULT_COMPUTE: &str = "int8_float16";
 
@@ -110,7 +114,7 @@ pub struct LoadRequest {
 }
 
 /// Parameters for one transcription.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct TranscribeRequest {
     /// Directory holding the `CTranslate2` model.
     pub model_dir: PathBuf,
@@ -129,6 +133,25 @@ pub struct TranscribeRequest {
     pub vad: bool,
     /// The audio to transcribe.
     pub audio: AudioB64,
+}
+
+impl std::fmt::Debug for TranscribeRequest {
+    /// Redacted: vocabulary terms, prompt text and audio are personal data, so only sizes show.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TranscribeRequest")
+            .field("model_dir", &self.model_dir)
+            .field("compute", &self.compute)
+            .field("language", &self.language)
+            .field(
+                "vocabulary_terms",
+                &self.vocabulary.as_ref().map(|v| v.terms.len()),
+            )
+            .field("prompt_prefix_chars", &self.prompt_prefix.chars().count())
+            .field("prompt_tokens", &self.prompt_tokens)
+            .field("vad", &self.vad)
+            .field("audio", &self.audio)
+            .finish()
+    }
 }
 
 /// Client-to-worker message.
@@ -257,6 +280,17 @@ mod tests {
             code: "bad_audio".to_owned(),
         });
         roundtrip(&Response::Bye);
+    }
+
+    #[test]
+    fn debug_output_is_redacted() {
+        let mut req = transcribe_request();
+        req.prompt_prefix = "secretprefix".to_owned();
+        let text = format!("{req:?} {:?}", Request::Transcribe(req.clone()));
+        for leak in ["alpha", "beta", "secretprefix"] {
+            assert!(!text.contains(leak), "{text}");
+        }
+        assert!(text.contains("vocabulary_terms: Some(2)"), "{text}");
     }
 
     #[test]

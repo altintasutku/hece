@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use hece_core::ipc::{
-    AudioB64, DEFAULT_COMPUTE, LoadRequest, PROTOCOL_VERSION, Request, Response, TranscribeRequest,
-    decode_body, encode_frame, frame_len,
+    AudioB64, CONN_IDLE_TIMEOUT, DEFAULT_COMPUTE, LoadRequest, MAX_AUDIO_SAMPLES, PROTOCOL_VERSION,
+    Request, Response, TranscribeRequest, decode_body, encode_frame, frame_len,
 };
 use hece_core::{Transcript, Vocabulary};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -18,7 +18,13 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::time::{Instant, sleep, timeout};
 
+/// Connections idle for longer than this are replaced before sending, a margin below the
+/// worker's own idle timeout.
+const RECONNECT_MARGIN: Duration = Duration::from_secs(5);
+
 const RETRY_INTERVAL: Duration = Duration::from_millis(100);
+/// How long to wait for a worker that won the bind race before spawning another.
+const RESPAWN_GRACE: Duration = Duration::from_secs(1);
 /// Worker exit code meaning another worker already owns the socket.
 const EXIT_ALREADY_RUNNING: i32 = 3;
 /// Samples per second of the wire audio format.
@@ -54,6 +60,9 @@ pub enum EngineClientError {
         /// Stable error code from the engine.
         code: String,
     },
+    /// The audio is longer than the protocol allows.
+    #[error("audio is too long for the engine")]
+    InvalidAudio,
     /// The worker sent something unexpected.
     #[error("unexpected engine response: {0}")]
     Protocol(String),
@@ -77,6 +86,7 @@ impl EngineClientError {
             Self::Crashed => "engine_crashed",
             Self::Timeout => "engine_timeout",
             Self::Engine { code } => code,
+            Self::InvalidAudio => "invalid_audio",
             Self::Protocol(_) => "engine_protocol",
             Self::Io(_) => "engine_io",
             Self::NoRuntimeDir => "no_runtime_dir",
@@ -101,6 +111,9 @@ pub struct EngineConfig {
     pub connect_timeout: Duration,
     /// Request timeout before the per-audio-length allowance (default 120 s).
     pub base_timeout: Duration,
+    /// A connection idle for longer than this is replaced before the next request, so the
+    /// request never lands on one the worker is about to close (default 25 s).
+    pub reconnect_after: Duration,
 }
 
 impl EngineConfig {
@@ -127,6 +140,7 @@ impl EngineConfig {
             idle_ttl: Duration::from_mins(30),
             connect_timeout: Duration::from_secs(20),
             base_timeout: Duration::from_secs(120),
+            reconnect_after: CONN_IDLE_TIMEOUT.saturating_sub(RECONNECT_MARGIN),
         })
     }
 }
@@ -170,6 +184,8 @@ impl Spawner for ProcessSpawner {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
+            // Own process group: a signal aimed at the daemon's group does not reach the worker.
+            .process_group(0)
             // The worker keeps its loaded model across a daemon restart.
             .kill_on_drop(false)
             .spawn()
@@ -188,6 +204,8 @@ struct State {
     conn: Option<UnixStream>,
     /// The worker this client started, if any; only that one is ever killed.
     child: Option<Child>,
+    /// When `conn` last completed a request.
+    last_used: Option<Instant>,
 }
 
 /// Client for the engine worker. Requests are serialized: concurrent callers queue in order.
@@ -205,16 +223,18 @@ impl std::fmt::Debug for EngineClient {
     }
 }
 
-/// Where a round trip failed; only failures before any response byte may be retried.
+/// Where a round trip failed; only a failed request write may be resent.
 enum Fail {
-    BeforeResponse(EngineClientError),
+    /// Writing the request failed, so the worker never saw all of it.
+    Write(EngineClientError),
+    /// Anything after the request was fully written.
     Later(EngineClientError),
 }
 
 impl Fail {
     fn into_error(self) -> EngineClientError {
         match self {
-            Self::BeforeResponse(e) | Self::Later(e) => e,
+            Self::Write(e) | Self::Later(e) => e,
         }
     }
 }
@@ -234,27 +254,28 @@ fn protocol_error(e: &hece_core::ipc::IpcError) -> EngineClientError {
 }
 
 async fn round_trip(conn: &mut UnixStream, req: &Request) -> Result<Response, Fail> {
-    let frame = encode_frame(req).map_err(|e| Fail::BeforeResponse(protocol_error(&e)))?;
+    let frame = encode_frame(req).map_err(|e| Fail::Write(protocol_error(&e)))?;
     conn.write_all(&frame)
         .await
-        .map_err(|e| Fail::BeforeResponse(io_error(&e)))?;
+        .map_err(|e| Fail::Write(io_error(&e)))?;
     let mut header = [0u8; 4];
-    let mut got = 0;
-    while got < header.len() {
-        match conn.read(&mut header[got..]).await {
-            Ok(0) if got == 0 => return Err(Fail::BeforeResponse(EngineClientError::Crashed)),
-            Ok(0) => return Err(Fail::Later(EngineClientError::Crashed)),
-            Ok(n) => got += n,
-            Err(e) if got == 0 => return Err(Fail::BeforeResponse(io_error(&e))),
-            Err(e) => return Err(Fail::Later(io_error(&e))),
-        }
-    }
+    conn.read_exact(&mut header)
+        .await
+        .map_err(|e| Fail::Later(io_error(&e)))?;
     let len = frame_len(header).map_err(|e| Fail::Later(protocol_error(&e)))?;
     let mut body = vec![0u8; len];
     conn.read_exact(&mut body)
         .await
         .map_err(|e| Fail::Later(io_error(&e)))?;
     decode_body(&body).map_err(|e| Fail::Later(protocol_error(&e)))
+}
+
+/// Error codes the worker sends right before closing the connection.
+fn closes_connection(code: &str) -> bool {
+    matches!(
+        code,
+        "bad_json" | "frame_too_large" | "bad_audio" | "invalid_audio"
+    )
 }
 
 impl EngineClient {
@@ -293,6 +314,9 @@ impl EngineClient {
         prompt_prefix: &str,
         prompt_tokens: usize,
     ) -> Result<Transcript, EngineClientError> {
+        if audio.len() > MAX_AUDIO_SAMPLES {
+            return Err(EngineClientError::InvalidAudio);
+        }
         let req = Request::Transcribe(TranscribeRequest {
             model_dir: self.cfg.model_dir.clone(),
             compute: self.cfg.compute.clone(),
@@ -351,6 +375,14 @@ impl EngineClient {
         limit: Duration,
         allow_spawn: bool,
     ) -> Result<Option<Response>, EngineClientError> {
+        Self::reap_child(state);
+        if let Some(used) = state.last_used
+            && state.conn.is_some()
+            && used.elapsed() > self.cfg.reconnect_after
+        {
+            tracing::debug!("engine connection idle, reconnecting");
+            state.conn = None;
+        }
         let mut retried = false;
         loop {
             let (mut conn, reused) = if let Some(conn) = state.conn.take() {
@@ -363,14 +395,19 @@ impl EngineClient {
             };
             match timeout(limit, round_trip(&mut conn, req)).await {
                 Ok(Ok(Response::Error { code })) => {
-                    state.conn = Some(conn);
+                    // The worker closes after framing errors; only backend errors keep it.
+                    if !closes_connection(&code) {
+                        state.conn = Some(conn);
+                        state.last_used = Some(Instant::now());
+                    }
                     return Err(EngineClientError::Engine { code });
                 }
                 Ok(Ok(resp)) => {
                     state.conn = Some(conn);
+                    state.last_used = Some(Instant::now());
                     return Ok(Some(resp));
                 }
-                Ok(Err(Fail::BeforeResponse(EngineClientError::Crashed))) if reused && !retried => {
+                Ok(Err(Fail::Write(EngineClientError::Crashed))) if reused && !retried => {
                     tracing::debug!("stale engine connection, reconnecting");
                     retried = true;
                 }
@@ -385,6 +422,22 @@ impl EngineClient {
                     return Err(EngineClientError::Timeout);
                 }
             }
+        }
+    }
+
+    /// Reaps a worker this client started that has since exited (e.g. on its idle TTL), so it
+    /// does not linger as a zombie, and drops the connection that belonged to it.
+    fn reap_child(state: &mut State) {
+        let Some(child) = state.child.as_mut() else {
+            return;
+        };
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                state.child = None;
+                state.conn = None;
+            }
+            Ok(None) => {}
+            Err(e) => tracing::debug!(kind = ?e.kind(), "try_wait on engine child failed"),
         }
     }
 
@@ -405,6 +458,9 @@ impl EngineClient {
     ) -> Result<Option<UnixStream>, EngineClientError> {
         let deadline = Instant::now() + self.cfg.connect_timeout;
         let mut spawned = false;
+        // After losing the bind race to another worker, give that one time to come up before
+        // spawning again (it may also have exited on its idle TTL in the meantime).
+        let mut respawn_after = Instant::now();
         let mut stream = loop {
             if let Ok(stream) = UnixStream::connect(&self.cfg.socket).await {
                 break stream;
@@ -413,8 +469,13 @@ impl EngineClient {
                 return Ok(None);
             }
             if spawned {
-                Self::check_child(state)?;
-            } else {
+                if Self::check_child(state)? {
+                    // The worker we started lost the race to another one that is still
+                    // coming up. If that one exits too, a later pass may spawn again.
+                    spawned = false;
+                    respawn_after = Instant::now() + RESPAWN_GRACE;
+                }
+            } else if Instant::now() >= respawn_after {
                 state.child = Some(self.spawner.spawn(&self.cfg)?);
                 spawned = true;
                 tracing::debug!("spawned engine worker");
@@ -427,13 +488,19 @@ impl EngineClient {
             }
             sleep(RETRY_INTERVAL).await;
         };
-        let hello = timeout(
-            self.cfg.connect_timeout,
-            round_trip(&mut stream, &Request::Hello),
-        )
-        .await
-        .map_err(|_| EngineClientError::ConnectTimeout)?
-        .map_err(Fail::into_error)?;
+        // The socket answered, so a worker is alive but may be busy (for example loading a
+        // model for another client); give it the connect budget plus a full request budget.
+        let hello_budget = self
+            .cfg
+            .connect_timeout
+            .saturating_add(self.cfg.base_timeout);
+        let Ok(hello) = timeout(hello_budget, round_trip(&mut stream, &Request::Hello)).await
+        else {
+            tracing::warn!("engine did not answer the handshake");
+            Self::kill_child(state).await;
+            return Err(EngineClientError::Timeout);
+        };
+        let hello = hello.map_err(Fail::into_error)?;
         match hello {
             Response::Hello { protocol, .. } if protocol == PROTOCOL_VERSION => Ok(Some(stream)),
             Response::Hello { protocol, .. } => {
@@ -443,16 +510,17 @@ impl EngineClient {
         }
     }
 
-    /// Notices a freshly spawned worker that died before binding the socket.
-    fn check_child(state: &mut State) -> Result<(), EngineClientError> {
+    /// Notices a freshly spawned worker that died before binding the socket. `Ok(true)` means
+    /// it exited with [`EXIT_ALREADY_RUNNING`] because another worker owns the socket.
+    fn check_child(state: &mut State) -> Result<bool, EngineClientError> {
         let Some(child) = state.child.as_mut() else {
-            return Ok(());
+            return Ok(false);
         };
         match child.try_wait() {
             Ok(Some(status)) if status.code() == Some(EXIT_ALREADY_RUNNING) => {
                 // Another worker owns the socket; keep retrying the connect.
                 state.child = None;
-                Ok(())
+                Ok(true)
             }
             Ok(Some(status)) => {
                 state.child = None;
@@ -461,10 +529,10 @@ impl EngineClient {
                     status.code()
                 )))
             }
-            Ok(None) => Ok(()),
+            Ok(None) => Ok(false),
             Err(e) => {
                 tracing::debug!(kind = ?e.kind(), "try_wait on engine child failed");
-                Ok(())
+                Ok(false)
             }
         }
     }

@@ -366,8 +366,9 @@ impl EngineClient {
 
     /// Sends one request on the (possibly new) connection. `Ok(None)` means no worker was
     /// reachable and spawning was not allowed. The connection is kept only after a clean answer.
-    /// A reused connection that fails before any response byte (e.g. the worker exited on its
-    /// idle TTL) is replaced once and the request is resent.
+    /// A reused connection that fails while the request is being written (e.g. the worker
+    /// exited on its idle TTL) is replaced once and the request is resent; a failure while
+    /// waiting for the response is never resent.
     async fn call_locked(
         &self,
         state: &mut State,

@@ -30,6 +30,12 @@ pub enum EngineError {
     /// The requested language is not a language of this model's vocabulary.
     #[error("unsupported language")]
     UnsupportedLanguage,
+    /// `XDG_RUNTIME_DIR` is not set, so there is no place for the worker socket.
+    #[error("XDG_RUNTIME_DIR is not set")]
+    NoRuntimeDir,
+    /// A socket operation of the worker failed.
+    #[error("socket failure: {0}")]
+    Socket(String),
     /// The input audio cannot be processed. Reserved for request validation by the worker.
     #[error("invalid audio: {reason}")]
     InvalidAudio {
@@ -51,6 +57,8 @@ impl EngineError {
             Self::Decode(_) => "decode_failed",
             Self::UnsupportedLanguage => "unsupported_language",
             Self::InvalidAudio { .. } => "invalid_audio",
+            Self::NoRuntimeDir => "no_runtime_dir",
+            Self::Socket(_) => "socket_failed",
         }
     }
 }
@@ -123,6 +131,8 @@ mod tests {
                 EngineError::InvalidAudio { reason: "x".into() },
                 "invalid_audio",
             ),
+            (EngineError::NoRuntimeDir, "no_runtime_dir"),
+            (EngineError::Socket("x".into()), "socket_failed"),
         ];
         for (err, code) in cases {
             assert_eq!(err.code(), code);

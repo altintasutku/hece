@@ -54,3 +54,5 @@ ort = "=2.0.0-rc.15"
 # Never enable the `whisper`/`sentencepiece` features: their protobuf clashes with ort at link time.
 ct2rs = { version = "0.10.2", default-features = false, features = ["cuda", "cuda-small-binary", "ruy"] }
 hound = "3.5.1"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "env-filter", "ansi"] }

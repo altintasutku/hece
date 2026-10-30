@@ -144,8 +144,8 @@ impl std::fmt::Debug for LocalEngine {
 impl LocalEngine {
     /// Loads a converted Whisper model from `model_dir` on CUDA device `device_index`.
     ///
-    /// Missing files or an unloadable model give `ModelDirInvalid`; a failing CUDA runtime or
-    /// device gives `CudaUnavailable`.
+    /// Missing files, an unloadable or English-only model, or a compute type the device cannot
+    /// run give `ModelDirInvalid`; a failing CUDA runtime or device gives `CudaUnavailable`.
     pub fn load(
         model_dir: &Path,
         compute: ComputeKind,
@@ -171,6 +171,7 @@ impl LocalEngine {
             ..Config::default()
         };
         let whisper = Whisper::new(model_dir, config).map_err(|e| classify_load_error(&e))?;
+        check_multilingual(whisper.is_multilingual())?;
         let mel = MelExtractor::new(whisper.n_mels());
         let vad = SileroVad::new()?;
         Ok(Self {
@@ -183,7 +184,7 @@ impl LocalEngine {
     }
 
     /// Transcribes 16 kHz mono `audio`. The language is `opts.language` or detected on the first
-    /// 30 s window. No speech gives an empty transcript whose language is the requested one (or
+    /// 30 s window (the model is multilingual; `load` rejects English-only models). No speech gives an empty transcript whose language is the requested one (or
     /// empty when none was requested, since nothing was detected).
     pub fn transcribe(
         &mut self,
@@ -201,14 +202,11 @@ impl LocalEngine {
             tokenizer: &self.tokenizer,
             n_mels: self.whisper.n_mels(),
         };
-        let language = match &opts.language {
-            // faster-whisper forces English on English-only models.
-            Some(_) | None if !self.whisper.is_multilingual() => "en".to_owned(),
-            Some(lang) => lang.clone(),
-            None => {
-                let mut window = prepared.mel.window(0, N_FRAMES);
-                detect_language(&dec, &mut window)?
-            }
+        let language = if let Some(lang) = &opts.language {
+            lang.clone()
+        } else {
+            let mut window = prepared.mel.window(0, N_FRAMES);
+            detect_language(&dec, &mut window)?
         };
         let lang_id = language_token(&self.tokenizer, &language)?;
         let segments = decode_prepared(
@@ -263,15 +261,37 @@ fn detect_language(dec: &Ct2Decoder<'_>, window: &mut [f32]) -> Result<String, E
         .ok_or_else(|| EngineError::Decode("unexpected language token".to_owned()))
 }
 
-/// Maps a `Whisper::new` failure. ct2rs flattens C++ exceptions into an error message, so a CUDA
-/// failure (no driver, no device, bad device index) is recognised by the `CUDA` it always names;
-/// everything else is a model the runtime could not load.
+/// Prefixes of the `CTranslate2` exceptions raised when the CUDA runtime or device is unusable:
+/// `CUDA_CHECK` (no device, driver too old, invalid device index), `CUBLAS_CHECK`, and a build
+/// without CUDA (`devices.cc`). Case-sensitive, so a model path containing "cuda" does not match.
+const CUDA_ERRORS: [&str; 3] = [
+    "CUDA failed with error ",
+    "cuBLAS failed with status ",
+    "This CTranslate2 package was not compiled with CUDA support",
+];
+
+/// Maps a `Whisper::new` failure. ct2rs flattens C++ exceptions into an error message, so CUDA
+/// failures are recognised by [`CUDA_ERRORS`]. Everything else is `ModelDirInvalid`, including
+/// a compute type the device cannot run ("Requested ... compute type, but the target device or
+/// backend do not support ..."): the converted model and the requested precision do not fit.
 fn classify_load_error(e: &impl std::fmt::Display) -> EngineError {
     let message = e.to_string();
-    if message.contains("CUDA") || message.contains("cuda") {
+    if CUDA_ERRORS.iter().any(|m| message.contains(m)) {
         EngineError::CudaUnavailable
     } else {
         EngineError::ModelDirInvalid { reason: message }
+    }
+}
+
+/// English-only models need the prompt `[sot]` instead of `[sot, language, transcribe]`, which
+/// this pipeline does not build, so they are rejected instead of being decoded wrongly.
+fn check_multilingual(is_multilingual: bool) -> Result<(), EngineError> {
+    if is_multilingual {
+        Ok(())
+    } else {
+        Err(EngineError::ModelDirInvalid {
+            reason: "english-only models are not supported".into(),
+        })
     }
 }
 
@@ -296,11 +316,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn load_errors_naming_cuda_are_cuda_unavailable() {
-        let cuda =
-            classify_load_error(&"CUDA failed with error no CUDA-capable device is detected");
-        assert_eq!(cuda.code(), "cuda_unavailable");
-        let other = classify_load_error(&"Unable to open file 'model.bin'");
-        assert_eq!(other.code(), "model_dir_invalid");
+    fn ctranslate2_cuda_errors_are_cuda_unavailable() {
+        for message in [
+            "CUDA failed with error no CUDA-capable device is detected",
+            "CUDA failed with error CUDA driver version is insufficient for CUDA runtime version",
+            "CUDA failed with error invalid device ordinal",
+            "cuBLAS failed with status CUBLAS_STATUS_NOT_INITIALIZED",
+            "This CTranslate2 package was not compiled with CUDA support",
+        ] {
+            assert_eq!(classify_load_error(&message).code(), "cuda_unavailable");
+        }
+    }
+
+    #[test]
+    fn other_load_errors_are_model_dir_invalid() {
+        for message in [
+            "Unable to open file 'model.bin' in model '/models/cuda-whisper/'",
+            "Unable to open file '/models/CUDA-whisper/model.bin'",
+            "Requested int8_float16 compute type, but the target device or backend do not \
+             support efficient int8_float16 computation.",
+        ] {
+            assert_eq!(classify_load_error(&message).code(), "model_dir_invalid");
+        }
+    }
+
+    #[test]
+    fn english_only_models_are_rejected() {
+        assert!(check_multilingual(true).is_ok());
+        let err = check_multilingual(false).unwrap_err();
+        assert_eq!(err.code(), "model_dir_invalid");
+        assert!(err.to_string().contains("english-only"));
     }
 }

@@ -32,7 +32,8 @@ pub struct Transcript {
     pub text: String,
     /// Per-segment detail, when the provider returns it.
     pub segments: Option<Vec<Segment>>,
-    /// Detected or requested language code.
+    /// Detected or requested language code; empty when no speech was found and no language was
+    /// requested.
     pub language: String,
     /// Name of the provider that produced the transcript.
     pub provider: String,

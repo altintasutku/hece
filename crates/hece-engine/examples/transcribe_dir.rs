@@ -9,7 +9,8 @@
 //! goes to stderr; transcript text never does.
 
 use std::error::Error;
-use std::fmt::Write as _;
+use std::fs::File;
+use std::io::{BufWriter, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -76,7 +77,8 @@ fn main() -> Result<()> {
     engine.warm_up()?;
 
     let list = std::fs::read_to_string(args.audio_dir.join("liste.tsv"))?;
-    let mut out = String::new();
+    // Each line is flushed as soon as it is produced, so a later failure keeps earlier results.
+    let mut out = BufWriter::new(File::create(&args.out)?);
     for line in list.lines().filter(|l| !l.trim().is_empty()) {
         let file = line.split('\t').next().unwrap_or(line);
         let audio = read_wav(&args.audio_dir.join(file))?;
@@ -87,7 +89,7 @@ fn main() -> Result<()> {
         // Keep the TSV one line per file.
         let text = transcript.text.replace(['\t', '\n', '\r'], " ");
         writeln!(out, "{file}\t{seconds:.3}\t{text}")?;
+        out.flush()?;
     }
-    std::fs::write(&args.out, out)?;
     Ok(())
 }

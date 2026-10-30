@@ -6,6 +6,7 @@ pub mod guard;
 pub mod hallucination;
 pub mod ipc;
 pub mod text;
+pub mod textnorm;
 pub mod types;
 pub mod vocab;
 

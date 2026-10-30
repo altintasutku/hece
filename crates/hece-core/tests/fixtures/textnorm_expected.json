@@ -1,0 +1,844 @@
+[
+ {
+  "input": "Toplam 1.500.000 adet ürün sevk edildi.",
+  "expand_numbers": "Toplam bir milyon beş yüz bin adet ürün sevk edildi.",
+  "spell_acronyms": "Toplam 1.500.000 adet ürün sevk edildi.",
+  "normalize_words": [
+   "toplam",
+   "bir",
+   "milyon",
+   "beş",
+   "yüz",
+   "bin",
+   "adet",
+   "ürün",
+   "sevk",
+   "edildi"
+  ]
+ },
+ {
+  "input": "Depoda 1250 koli ve 42 palet var.",
+  "expand_numbers": "Depoda bin iki yüz elli koli ve kırk iki palet var.",
+  "spell_acronyms": "Depoda 1250 koli ve 42 palet var.",
+  "normalize_words": [
+   "depoda",
+   "bin",
+   "iki",
+   "yüz",
+   "elli",
+   "koli",
+   "ve",
+   "kırk",
+   "iki",
+   "palet",
+   "var"
+  ]
+ },
+ {
+  "input": "Sayı 0 olarak kaydedildi.",
+  "expand_numbers": "Sayı sıfır olarak kaydedildi.",
+  "spell_acronyms": "Sayı 0 olarak kaydedildi.",
+  "normalize_words": [
+   "sayı",
+   "sıfır",
+   "olarak",
+   "kaydedildi"
+  ]
+ },
+ {
+  "input": "Rakam 1000 oldu, sonra 2025 yılına geçtik.",
+  "expand_numbers": "Rakam bin oldu, sonra iki bin yirmi beş yılına geçtik.",
+  "spell_acronyms": "Rakam 1000 oldu, sonra 2025 yılına geçtik.",
+  "normalize_words": [
+   "rakam",
+   "bin",
+   "oldu",
+   "sonra",
+   "iki",
+   "bin",
+   "yirmi",
+   "beş",
+   "yılına",
+   "geçtik"
+  ]
+ },
+ {
+  "input": "Bu bir milyar iki yüz milyon: 1.200.000.000 adet.",
+  "expand_numbers": "Bu bir milyar iki yüz milyon: bir milyar iki yüz milyon adet.",
+  "spell_acronyms": "Bu bir milyar iki yüz milyon: 1.200.000.000 adet.",
+  "normalize_words": [
+   "bu",
+   "bir",
+   "milyar",
+   "iki",
+   "yüz",
+   "milyon",
+   "bir",
+   "milyar",
+   "iki",
+   "yüz",
+   "milyon",
+   "adet"
+  ]
+ },
+ {
+  "input": "Sınır 999.999.999.999 değeri.",
+  "expand_numbers": "Sınır dokuz yüz doksan dokuz milyar dokuz yüz doksan dokuz milyon dokuz yüz doksan dokuz bin dokuz yüz doksan dokuz değeri.",
+  "spell_acronyms": "Sınır 999.999.999.999 değeri.",
+  "normalize_words": [
+   "sınır",
+   "dokuz",
+   "yüz",
+   "doksan",
+   "dokuz",
+   "milyar",
+   "dokuz",
+   "yüz",
+   "doksan",
+   "dokuz",
+   "milyon",
+   "dokuz",
+   "yüz",
+   "doksan",
+   "dokuz",
+   "bin",
+   "dokuz",
+   "yüz",
+   "doksan",
+   "dokuz",
+   "değeri"
+  ]
+ },
+ {
+  "input": "Çok büyük bir sayı 1.000.000.000.000 okunmaz.",
+  "expand_numbers": "Çok büyük bir sayı 1.000.000.000.000 okunmaz.",
+  "spell_acronyms": "Çok büyük bir sayı 1.000.000.000.000 okunmaz.",
+  "normalize_words": [
+   "çok",
+   "büyük",
+   "bir",
+   "sayı",
+   "1",
+   "000",
+   "000",
+   "000",
+   "000",
+   "okunmaz"
+  ]
+ },
+ {
+  "input": "Oran 2,5 ve ölçü 0,05 olarak girildi.",
+  "expand_numbers": "Oran iki virgül beş ve ölçü sıfır virgül sıfır beş olarak girildi.",
+  "spell_acronyms": "Oran 2,5 ve ölçü 0,05 olarak girildi.",
+  "normalize_words": [
+   "oran",
+   "iki",
+   "virgül",
+   "beş",
+   "ve",
+   "ölçü",
+   "sıfır",
+   "virgül",
+   "sıfır",
+   "beş",
+   "olarak",
+   "girildi"
+  ]
+ },
+ {
+  "input": "Hassasiyet 3,14159 civarında.",
+  "expand_numbers": "Hassasiyet üç virgül on dört bin yüz elli dokuz civarında.",
+  "spell_acronyms": "Hassasiyet 3,14159 civarında.",
+  "normalize_words": [
+   "hassasiyet",
+   "üç",
+   "virgül",
+   "on",
+   "dört",
+   "bin",
+   "yüz",
+   "elli",
+   "dokuz",
+   "civarında"
+  ]
+ },
+ {
+  "input": "Toplantı 19.10.2026 tarihinde yapıldı.",
+  "expand_numbers": "Toplantı on dokuz Ekim iki bin yirmi altı tarihinde yapıldı.",
+  "spell_acronyms": "Toplantı 19.10.2026 tarihinde yapıldı.",
+  "normalize_words": [
+   "toplantı",
+   "on",
+   "dokuz",
+   "ekim",
+   "iki",
+   "bin",
+   "yirmi",
+   "altı",
+   "tarihinde",
+   "yapıldı"
+  ]
+ },
+ {
+  "input": "Teslim 05/03/2025 günü bekleniyor.",
+  "expand_numbers": "Teslim beş Mart iki bin yirmi beş günü bekleniyor.",
+  "spell_acronyms": "Teslim 05/03/2025 günü bekleniyor.",
+  "normalize_words": [
+   "teslim",
+   "beş",
+   "mart",
+   "iki",
+   "bin",
+   "yirmi",
+   "beş",
+   "günü",
+   "bekleniyor"
+  ]
+ },
+ {
+  "input": "Geçersiz tarih 45.13.2026 yazılmış.",
+  "expand_numbers": "Geçersiz tarih 45.13.2026 yazılmış.",
+  "spell_acronyms": "Geçersiz tarih 45.13.2026 yazılmış.",
+  "normalize_words": [
+   "geçersiz",
+   "tarih",
+   "45",
+   "13",
+   "2026",
+   "yazılmış"
+  ]
+ },
+ {
+  "input": "Randevu 07:00'de başlıyor.",
+  "expand_numbers": "Randevu yedide başlıyor.",
+  "spell_acronyms": "Randevu 07:00'de başlıyor.",
+  "normalize_words": [
+   "randevu",
+   "yedide",
+   "başlıyor"
+  ]
+ },
+ {
+  "input": "Servis 14:30 ile 16.45 arasında açık.",
+  "expand_numbers": "Servis on dört otuz ile on altı kırk beş arasında açık.",
+  "spell_acronyms": "Servis 14:30 ile 16.45 arasında açık.",
+  "normalize_words": [
+   "servis",
+   "on",
+   "dört",
+   "otuz",
+   "ile",
+   "on",
+   "altı",
+   "kırk",
+   "beş",
+   "arasında",
+   "açık"
+  ]
+ },
+ {
+  "input": "Gece 23:59'a kadar süre var.",
+  "expand_numbers": "Gece yirmi üç elli dokuza kadar süre var.",
+  "spell_acronyms": "Gece 23:59'a kadar süre var.",
+  "normalize_words": [
+   "gece",
+   "yirmi",
+   "üç",
+   "elli",
+   "dokuza",
+   "kadar",
+   "süre",
+   "var"
+  ]
+ },
+ {
+  "input": "Kapanış 9.30'da olacak.",
+  "expand_numbers": "Kapanış dokuz otuzda olacak.",
+  "spell_acronyms": "Kapanış 9.30'da olacak.",
+  "normalize_words": [
+   "kapanış",
+   "dokuz",
+   "otuzda",
+   "olacak"
+  ]
+ },
+ {
+  "input": "İndirim %12 oranında, zam ise %3,5 civarında.",
+  "expand_numbers": "İndirim yüzde on iki oranında, zam ise yüzde üç virgül beş civarında.",
+  "spell_acronyms": "İndirim %12 oranında, zam ise %3,5 civarında.",
+  "normalize_words": [
+   "indirim",
+   "yüzde",
+   "on",
+   "iki",
+   "oranında",
+   "zam",
+   "ise",
+   "yüzde",
+   "üç",
+   "virgül",
+   "beş",
+   "civarında"
+  ]
+ },
+ {
+  "input": "Yüzde değeri % 40 olarak göründü.",
+  "expand_numbers": "Yüzde değeri yüzde kırk olarak göründü.",
+  "spell_acronyms": "Yüzde değeri % 40 olarak göründü.",
+  "normalize_words": [
+   "yüzde",
+   "değeri",
+   "yüzde",
+   "kırk",
+   "olarak",
+   "göründü"
+  ]
+ },
+ {
+  "input": "Fiyat 1.250 TL olarak belirlendi.",
+  "expand_numbers": "Fiyat bin iki yüz elli lira olarak belirlendi.",
+  "spell_acronyms": "Fiyat 1.250 te le olarak belirlendi.",
+  "normalize_words": [
+   "fiyat",
+   "bin",
+   "iki",
+   "yüz",
+   "elli",
+   "lira",
+   "olarak",
+   "belirlendi"
+  ]
+ },
+ {
+  "input": "Ödeme ₺45 tutarında alındı.",
+  "expand_numbers": "Ödeme kırk beş lira tutarında alındı.",
+  "spell_acronyms": "Ödeme ₺45 tutarında alındı.",
+  "normalize_words": [
+   "ödeme",
+   "kırk",
+   "beş",
+   "lira",
+   "tutarında",
+   "alındı"
+  ]
+ },
+ {
+  "input": "Toplam 12,50 TL tahsil edildi.",
+  "expand_numbers": "Toplam on iki lira elli kuruş tahsil edildi.",
+  "spell_acronyms": "Toplam 12,50 te le tahsil edildi.",
+  "normalize_words": [
+   "toplam",
+   "on",
+   "iki",
+   "lira",
+   "elli",
+   "kuruş",
+   "tahsil",
+   "edildi"
+  ]
+ },
+ {
+  "input": "Bakiye 57.842,98 ₺ görünüyor.",
+  "expand_numbers": "Bakiye elli yedi bin sekiz yüz kırk iki lira doksan sekiz kuruş görünüyor.",
+  "spell_acronyms": "Bakiye 57.842,98 ₺ görünüyor.",
+  "normalize_words": [
+   "bakiye",
+   "elli",
+   "yedi",
+   "bin",
+   "sekiz",
+   "yüz",
+   "kırk",
+   "iki",
+   "lira",
+   "doksan",
+   "sekiz",
+   "kuruş",
+   "görünüyor"
+  ]
+ },
+ {
+  "input": "Kargo 0,75 TL ücretli.",
+  "expand_numbers": "Kargo yetmiş beş kuruş ücretli.",
+  "spell_acronyms": "Kargo 0,75 te le ücretli.",
+  "normalize_words": [
+   "kargo",
+   "yetmiş",
+   "beş",
+   "kuruş",
+   "ücretli"
+  ]
+ },
+ {
+  "input": "Ücret ₺1.100 değil.",
+  "expand_numbers": "Ücret bin yüz lira değil.",
+  "spell_acronyms": "Ücret ₺1.100 değil.",
+  "normalize_words": [
+   "ücret",
+   "bin",
+   "yüz",
+   "lira",
+   "değil"
+  ]
+ },
+ {
+  "input": "Tutar 99 TRY üzerinden hesaplandı.",
+  "expand_numbers": "Tutar doksan dokuz lira üzerinden hesaplandı.",
+  "spell_acronyms": "Tutar 99 te re ye üzerinden hesaplandı.",
+  "normalize_words": [
+   "tutar",
+   "doksan",
+   "dokuz",
+   "lira",
+   "üzerinden",
+   "hesaplandı"
+  ]
+ },
+ {
+  "input": "Birim TL cinsinden girilir.",
+  "expand_numbers": "Birim lira cinsinden girilir.",
+  "spell_acronyms": "Birim te le cinsinden girilir.",
+  "normalize_words": [
+   "birim",
+   "lira",
+   "cinsinden",
+   "girilir"
+  ]
+ },
+ {
+  "input": "Sembol ₺ ile gösterilir.",
+  "expand_numbers": "Sembol lira ile gösterilir.",
+  "spell_acronyms": "Sembol ₺ ile gösterilir.",
+  "normalize_words": [
+   "sembol",
+   "lira",
+   "ile",
+   "gösterilir"
+  ]
+ },
+ {
+  "input": "2025'te yeni bir sürüm çıktı.",
+  "expand_numbers": "iki bin yirmi beşte yeni bir sürüm çıktı.",
+  "spell_acronyms": "2025'te yeni bir sürüm çıktı.",
+  "normalize_words": [
+   "iki",
+   "bin",
+   "yirmi",
+   "beşte",
+   "yeni",
+   "bir",
+   "sürüm",
+   "çıktı"
+  ]
+ },
+ {
+  "input": "Kart ESP32'yi destekliyor.",
+  "expand_numbers": "Kart ESP32'yi destekliyor.",
+  "spell_acronyms": "Kart e se pe otuz iki'yi destekliyor.",
+  "normalize_words": [
+   "kart",
+   "e",
+   "se",
+   "pe",
+   "otuz",
+   "ikiyi",
+   "destekliyor"
+  ]
+ },
+ {
+  "input": "Etkinlik 2026’da yapılacak.",
+  "expand_numbers": "Etkinlik iki bin yirmi altıda yapılacak.",
+  "spell_acronyms": "Etkinlik 2026’da yapılacak.",
+  "normalize_words": [
+   "etkinlik",
+   "iki",
+   "bin",
+   "yirmi",
+   "altıda",
+   "yapılacak"
+  ]
+ },
+ {
+  "input": "TÜBİTAK desteği alındı.",
+  "expand_numbers": "TÜBİTAK desteği alındı.",
+  "spell_acronyms": "TÜBİTAK desteği alındı.",
+  "normalize_words": [
+   "tübitak",
+   "desteği",
+   "alındı"
+  ]
+ },
+ {
+  "input": "ODTÜ'de bir seminer var.",
+  "expand_numbers": "ODTÜ'de bir seminer var.",
+  "spell_acronyms": "ODTÜ'de bir seminer var.",
+  "normalize_words": [
+   "odtüde",
+   "bir",
+   "seminer",
+   "var"
+  ]
+ },
+ {
+  "input": "EEM bölümünde ders aldım.",
+  "expand_numbers": "EEM bölümünde ders aldım.",
+  "spell_acronyms": "e e me bölümünde ders aldım.",
+  "normalize_words": [
+   "e",
+   "e",
+   "me",
+   "bölümünde",
+   "ders",
+   "aldım"
+  ]
+ },
+ {
+  "input": "ABD ile görüşme yapıldı.",
+  "expand_numbers": "ABD ile görüşme yapıldı.",
+  "spell_acronyms": "a be de ile görüşme yapıldı.",
+  "normalize_words": [
+   "a",
+   "be",
+   "de",
+   "ile",
+   "görüşme",
+   "yapıldı"
+  ]
+ },
+ {
+  "input": "THY uçuşu gecikti.",
+  "expand_numbers": "THY uçuşu gecikti.",
+  "spell_acronyms": "te ha ye uçuşu gecikti.",
+  "normalize_words": [
+   "te",
+   "ha",
+   "ye",
+   "uçuşu",
+   "gecikti"
+  ]
+ },
+ {
+  "input": "KVKK kapsamında bilgi verildi.",
+  "expand_numbers": "KVKK kapsamında bilgi verildi.",
+  "spell_acronyms": "ka ve ka ka kapsamında bilgi verildi.",
+  "normalize_words": [
+   "ka",
+   "ve",
+   "ka",
+   "ka",
+   "kapsamında",
+   "bilgi",
+   "verildi"
+  ]
+ },
+ {
+  "input": "MP3 dosyası ve A4 kâğıt aldım.",
+  "expand_numbers": "MP3 dosyası ve A4 kâğıt aldım.",
+  "spell_acronyms": "me pe üç dosyası ve a dört kâğıt aldım.",
+  "normalize_words": [
+   "me",
+   "pe",
+   "üç",
+   "dosyası",
+   "ve",
+   "a",
+   "dört",
+   "kâğıt",
+   "aldım"
+  ]
+ },
+ {
+  "input": "ESP32 kartı ile B2 seviyesi karıştırılmadı.",
+  "expand_numbers": "ESP32 kartı ile B2 seviyesi karıştırılmadı.",
+  "spell_acronyms": "e se pe otuz iki kartı ile be iki seviyesi karıştırılmadı.",
+  "normalize_words": [
+   "e",
+   "se",
+   "pe",
+   "otuz",
+   "iki",
+   "kartı",
+   "ile",
+   "be",
+   "iki",
+   "seviyesi",
+   "karıştırılmadı"
+  ]
+ },
+ {
+  "input": "Modül x86 ve USB3 portu içeriyor.",
+  "expand_numbers": "Modül x86 ve USB3 portu içeriyor.",
+  "spell_acronyms": "Modül x86 ve u se be üç portu içeriyor.",
+  "normalize_words": [
+   "modül",
+   "x86",
+   "ve",
+   "u",
+   "se",
+   "be",
+   "üç",
+   "portu",
+   "içeriyor"
+  ]
+ },
+ {
+  "input": "İSTANBUL'DA hava güzel, istanbulda da öyle.",
+  "expand_numbers": "İSTANBUL'DA hava güzel, istanbulda da öyle.",
+  "spell_acronyms": "İSTANBUL'DA hava güzel, istanbulda da öyle.",
+  "normalize_words": [
+   "istanbulda",
+   "hava",
+   "güzel",
+   "istanbulda",
+   "da",
+   "öyle"
+  ]
+ },
+ {
+  "input": "IŞIK ışık gibi parlıyor, İĞNE iğne.",
+  "expand_numbers": "IŞIK ışık gibi parlıyor, İĞNE iğne.",
+  "spell_acronyms": "IŞIK ışık gibi parlıyor, İĞNE iğne.",
+  "normalize_words": [
+   "ışık",
+   "ışık",
+   "gibi",
+   "parlıyor",
+   "iğne",
+   "iğne"
+  ]
+ },
+ {
+  "input": "Kısaltma TCDD'nin ve NATO'nun yolu.",
+  "expand_numbers": "Kısaltma TCDD'nin ve NATO'nun yolu.",
+  "spell_acronyms": "Kısaltma te ce de de'nin ve NATO'nun yolu.",
+  "normalize_words": [
+   "kısaltma",
+   "te",
+   "ce",
+   "de",
+   "denin",
+   "ve",
+   "natonun",
+   "yolu"
+  ]
+ },
+ {
+  "input": "Merhaba, dünya! Nasılsın? (iyiyim) - tamam; evet...",
+  "expand_numbers": "Merhaba, dünya! Nasılsın? (iyiyim) - tamam; evet...",
+  "spell_acronyms": "Merhaba, dünya! Nasılsın? (iyiyim) - tamam; evet...",
+  "normalize_words": [
+   "merhaba",
+   "dünya",
+   "nasılsın",
+   "iyiyim",
+   "tamam",
+   "evet"
+  ]
+ },
+ {
+  "input": "snake_case ve kebab-case değişkenler.",
+  "expand_numbers": "snake_case ve kebab-case değişkenler.",
+  "spell_acronyms": "snake_case ve kebab-case değişkenler.",
+  "normalize_words": [
+   "snake",
+   "case",
+   "ve",
+   "kebab",
+   "case",
+   "değişkenler"
+  ]
+ },
+ {
+  "input": "Tırnak 'merhaba' ve “selam” içinde.",
+  "expand_numbers": "Tırnak 'merhaba' ve “selam” içinde.",
+  "spell_acronyms": "Tırnak 'merhaba' ve “selam” içinde.",
+  "normalize_words": [
+   "tırnak",
+   "merhaba",
+   "ve",
+   "selam",
+   "içinde"
+  ]
+ },
+ {
+  "input": "Kullanıcı o'nun dediği gibi it's fine.",
+  "expand_numbers": "Kullanıcı o'nun dediği gibi it's fine.",
+  "spell_acronyms": "Kullanıcı o'nun dediği gibi it's fine.",
+  "normalize_words": [
+   "kullanıcı",
+   "onun",
+   "dediği",
+   "gibi",
+   "its",
+   "fine"
+  ]
+ },
+ {
+  "input": "Çok   boşluklu\tve\nsatırlı metin.",
+  "expand_numbers": "Çok   boşluklu\tve\nsatırlı metin.",
+  "spell_acronyms": "Çok   boşluklu\tve\nsatırlı metin.",
+  "normalize_words": [
+   "çok",
+   "boşluklu",
+   "ve",
+   "satırlı",
+   "metin"
+  ]
+ },
+ {
+  "input": "",
+  "expand_numbers": "",
+  "spell_acronyms": "",
+  "normalize_words": []
+ },
+ {
+  "input": "   ",
+  "expand_numbers": "   ",
+  "spell_acronyms": "   ",
+  "normalize_words": []
+ },
+ {
+  "input": "Şğüöçı İıÖÇ harfleri.",
+  "expand_numbers": "Şğüöçı İıÖÇ harfleri.",
+  "spell_acronyms": "Şğüöçı İıÖÇ harfleri.",
+  "normalize_words": [
+   "şğüöçı",
+   "iıöç",
+   "harfleri"
+  ]
+ },
+ {
+  "input": "Not 3 sayfa, 2 bölüm, 1 ek ve 10 örnek.",
+  "expand_numbers": "Not üç sayfa, iki bölüm, bir ek ve on örnek.",
+  "spell_acronyms": "Not 3 sayfa, 2 bölüm, 1 ek ve 10 örnek.",
+  "normalize_words": [
+   "not",
+   "üç",
+   "sayfa",
+   "iki",
+   "bölüm",
+   "bir",
+   "ek",
+   "ve",
+   "on",
+   "örnek"
+  ]
+ },
+ {
+  "input": "Sıcaklık 36,6 derece, nem %45 idi.",
+  "expand_numbers": "Sıcaklık otuz altı virgül altı derece, nem yüzde kırk beş idi.",
+  "spell_acronyms": "Sıcaklık 36,6 derece, nem %45 idi.",
+  "normalize_words": [
+   "sıcaklık",
+   "otuz",
+   "altı",
+   "virgül",
+   "altı",
+   "derece",
+   "nem",
+   "yüzde",
+   "kırk",
+   "beş",
+   "idi"
+  ]
+ },
+ {
+  "input": "Eski 1.5 yazım ve 1,000 yazımı karışık.",
+  "expand_numbers": "Eski 1.5 yazım ve bir virgül sıfır sıfır sıfır yazımı karışık.",
+  "spell_acronyms": "Eski 1.5 yazım ve 1,000 yazımı karışık.",
+  "normalize_words": [
+   "eski",
+   "1",
+   "5",
+   "yazım",
+   "ve",
+   "bir",
+   "virgül",
+   "sıfır",
+   "sıfır",
+   "sıfır",
+   "yazımı",
+   "karışık"
+  ]
+ },
+ {
+  "input": "Hat 3.45.67 numarası.",
+  "expand_numbers": "Hat 3.45.67 numarası.",
+  "spell_acronyms": "Hat 3.45.67 numarası.",
+  "normalize_words": [
+   "hat",
+   "3",
+   "45",
+   "67",
+   "numarası"
+  ]
+ },
+ {
+  "input": "Adres 12.5.2026'da geçerli, 7 Kasım değil.",
+  "expand_numbers": "Adres on iki Mayıs iki bin yirmi altıda geçerli, yedi Kasım değil.",
+  "spell_acronyms": "Adres 12.5.2026'da geçerli, 7 Kasım değil.",
+  "normalize_words": [
+   "adres",
+   "on",
+   "iki",
+   "mayıs",
+   "iki",
+   "bin",
+   "yirmi",
+   "altıda",
+   "geçerli",
+   "yedi",
+   "kasım",
+   "değil"
+  ]
+ },
+ {
+  "input": "OK tamam, ID kodu AB12 ve XYZ99.",
+  "expand_numbers": "OK tamam, ID kodu AB12 ve XYZ99.",
+  "spell_acronyms": "OK tamam, ID kodu AB on iki ve iks ye ze doksan dokuz.",
+  "normalize_words": [
+   "ok",
+   "tamam",
+   "ıd",
+   "kodu",
+   "ab",
+   "on",
+   "iki",
+   "ve",
+   "iks",
+   "ye",
+   "ze",
+   "doksan",
+   "dokuz"
+  ]
+ },
+ {
+  "input": "Çok uzun KISALTMALAR YOKTUR ve PROGRAMLAMA.",
+  "expand_numbers": "Çok uzun KISALTMALAR YOKTUR ve PROGRAMLAMA.",
+  "spell_acronyms": "Çok uzun KISALTMALAR YOKTUR ve PROGRAMLAMA.",
+  "normalize_words": [
+   "çok",
+   "uzun",
+   "kısaltmalar",
+   "yoktur",
+   "ve",
+   "programlama"
+  ]
+ },
+ {
+  "input": "Paket 2 TL, 3 ₺ ve ₺ 7 değerinde.",
+  "expand_numbers": "Paket iki lira, üç lira ve yedi lira değerinde.",
+  "spell_acronyms": "Paket 2 te le, 3 ₺ ve ₺ 7 değerinde.",
+  "normalize_words": [
+   "paket",
+   "iki",
+   "lira",
+   "üç",
+   "lira",
+   "ve",
+   "yedi",
+   "lira",
+   "değerinde"
+  ]
+ }
+]

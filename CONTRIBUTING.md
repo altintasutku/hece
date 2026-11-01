@@ -2,7 +2,8 @@
 
 ## Prerequisites
 
-- Rust stable, 1.94 or newer
+- Rust stable, 1.94 or newer (`mise.toml` pins it for mise users)
+- Windows: Visual Studio Build Tools with the C++ workload (MSVC linker)
 - CUDA toolkit, only if you build `hece-engine` with `--features cuda`
 
 ## Quality gate

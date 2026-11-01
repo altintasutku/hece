@@ -1,4 +1,5 @@
-//! Worker server over real unix sockets with a fake backend. No CUDA needed.
+//! Worker server over real unix sockets (named pipes on Windows) with a fake backend. No CUDA
+//! needed.
 
 #![expect(
     clippy::unwrap_used,
@@ -6,7 +7,9 @@
 )]
 
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -35,6 +38,7 @@ impl TempDir {
         let dir = std::env::temp_dir().join(format!("hece-t-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // bind() rejects group/world accessible directories.
+        #[cfg(unix)]
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
         Self(dir)
     }
@@ -101,17 +105,44 @@ fn start(dir: &TempDir, fake: Fake, ttl: Duration) -> ServeHandle {
     })
 }
 
-fn connect(dir: &TempDir) -> UnixStream {
+/// Client end of a connection.
+#[cfg(unix)]
+type Client = UnixStream;
+/// Client end of a connection: the named pipe opened as a file.
+#[cfg(windows)]
+type Client = std::fs::File;
+
+#[cfg(unix)]
+fn connect(dir: &TempDir) -> Client {
     let s = UnixStream::connect(dir.sock()).unwrap();
     s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
     s
 }
 
-fn send(s: &mut UnixStream, req: &Request) {
+/// Retries while every pipe instance is busy (`ERROR_PIPE_BUSY`), as real clients do.
+#[cfg(windows)]
+fn connect(dir: &TempDir) -> Client {
+    const ERROR_PIPE_BUSY: i32 = 231;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(hece_core::ipc::pipe_name(&dir.sock()))
+        {
+            Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY) && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            other => return other.unwrap(),
+        }
+    }
+}
+
+fn send(s: &mut Client, req: &Request) {
     s.write_all(&encode_frame(req).unwrap()).unwrap();
 }
 
-fn recv(s: &mut UnixStream) -> Response {
+fn recv(s: &mut Client) -> Response {
     let mut header = [0u8; 4];
     s.read_exact(&mut header).unwrap();
     let mut body = vec![0u8; u32::from_be_bytes(header) as usize];
@@ -286,6 +317,7 @@ fn oversized_frame_with_a_real_body_still_gets_the_error() {
     let dir = TempDir::new();
     let handle = start(&dir, Fake::default(), LONG);
     let mut s = connect(&dir);
+    #[cfg(unix)]
     s.set_write_timeout(Some(Duration::from_secs(10))).unwrap();
     let total = 70 * 1024 * 1024;
     let mut writer = s.try_clone().unwrap();
@@ -308,6 +340,7 @@ fn oversized_frame_with_a_real_body_still_gets_the_error() {
     shutdown(&dir, handle);
 }
 
+#[cfg(unix)]
 #[test]
 fn truncated_body_closes_the_connection_and_server_survives() {
     let dir = TempDir::new();
@@ -319,6 +352,23 @@ fn truncated_body_closes_the_connection_and_server_survives() {
     let mut rest = Vec::new();
     s.read_to_end(&mut rest).unwrap();
     assert_eq!(rest, [] as [u8; 0]);
+    let mut s2 = connect(&dir);
+    send(&mut s2, &Request::Hello);
+    assert!(matches!(recv(&mut s2), Response::Hello { .. }));
+    drop(s2);
+    shutdown(&dir, handle);
+}
+
+/// Named pipes cannot be half closed, so the client hangs up mid-body instead.
+#[cfg(windows)]
+#[test]
+fn hangup_mid_body_closes_the_connection_and_server_survives() {
+    let dir = TempDir::new();
+    let handle = start(&dir, Fake::default(), LONG);
+    let mut s = connect(&dir);
+    s.write_all(&100u32.to_be_bytes()).unwrap();
+    s.write_all(b"0123456789").unwrap();
+    drop(s);
     let mut s2 = connect(&dir);
     send(&mut s2, &Request::Hello);
     assert!(matches!(recv(&mut s2), Response::Hello { .. }));
@@ -357,10 +407,13 @@ fn socket_path_needs_a_runtime_dir() {
     );
     assert_eq!(
         socket_path_from(Some("/run/user/1".into())).unwrap(),
-        PathBuf::from("/run/user/1/hece/engine.sock")
+        PathBuf::from("/run/user/1")
+            .join("hece")
+            .join("engine.sock")
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn bind_rejects_an_insecure_existing_directory() {
     let dir = TempDir::new();
@@ -427,6 +480,7 @@ fn shutdown_replies_bye_and_returns() {
     shutdown(&dir, handle);
 }
 
+#[cfg(unix)]
 #[test]
 fn bind_replaces_a_stale_socket() {
     let dir = TempDir::new();
@@ -443,6 +497,7 @@ fn bind_detects_a_live_listener() {
     assert!(matches!(bind(&dir.sock()), Err(BindError::AlreadyRunning)));
 }
 
+#[cfg(unix)]
 #[test]
 fn bind_refuses_to_replace_a_regular_file() {
     let dir = TempDir::new();
@@ -451,6 +506,7 @@ fn bind_refuses_to_replace_a_regular_file() {
     assert!(dir.sock().exists());
 }
 
+#[cfg(unix)]
 #[test]
 fn bind_sets_private_modes() {
     let dir = TempDir::new();
@@ -460,6 +516,28 @@ fn bind_sets_private_modes() {
     let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode(&path), 0o600);
     assert_eq!(mode(&sub), 0o700);
+}
+
+#[cfg(windows)]
+#[test]
+fn bind_creates_the_directory_and_lock_file() {
+    let dir = TempDir::new();
+    let path = dir.0.join("hece").join("engine.sock");
+    let _l = bind(&path).unwrap();
+    assert!(path.with_file_name("engine.lock").is_file());
+}
+
+/// A process that already owns the pipe name, without the lock, is never shared with.
+#[cfg(windows)]
+#[test]
+fn bind_fails_when_another_process_owns_the_pipe_name() {
+    use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName};
+    let dir = TempDir::new();
+    let name = hece_core::ipc::pipe_name(&dir.sock())
+        .to_fs_name::<GenericFilePath>()
+        .unwrap();
+    let _squatter = ListenerOptions::new().name(name).create_sync().unwrap();
+    assert!(matches!(bind(&dir.sock()), Err(BindError::Io(_))));
 }
 
 #[test]

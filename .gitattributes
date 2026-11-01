@@ -1,0 +1,5 @@
+# LF everywhere, also in Windows checkouts (fixtures are compared byte for byte).
+* text=auto eol=lf
+*.onnx binary
+*.i16 binary
+*.f32 binary

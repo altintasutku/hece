@@ -60,3 +60,6 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 tokio = { version = "1.54.1", features = ["net", "process", "time", "io-util", "sync", "macros", "rt-multi-thread"] }
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
+# Windows only: named pipes for the engine worker IPC.
+interprocess = { version = "2.4.7", features = ["tokio"] }
+widestring = "1.2.1"

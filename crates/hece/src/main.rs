@@ -4,6 +4,8 @@ mod bench;
 mod cli;
 mod dictate;
 mod output;
+#[cfg(windows)]
+mod run;
 
 use std::process::ExitCode;
 
@@ -40,6 +42,8 @@ fn run(cli: Cli) -> anyhow::Result<bool> {
         Command::Bench(args) => runtime.block_on(bench::execute(&args)),
         Command::Devices => dictate::devices().map(|()| false),
         Command::Dictate(args) => runtime.block_on(dictate::execute(&args)).map(|()| false),
+        #[cfg(windows)]
+        Command::Run(args) => runtime.block_on(run::execute(&args)).map(|()| false),
     }
 }
 

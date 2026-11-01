@@ -15,8 +15,9 @@ workspace = true
 hece-core = { path = "../hece-core" }
 hece-providers = { path = "../hece-providers" }
 hece-audio = { path = "../hece-audio" }
+hece-platform = { path = "../hece-platform" }
 anyhow.workspace = true
 clap.workspace = true
 hound.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["signal"] }

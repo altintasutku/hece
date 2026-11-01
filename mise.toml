@@ -1,2 +1,8 @@
 [tools]
 rust = "1.94"
+# Builds CTranslate2 for the engine (cuda feature).
+cmake = "4.4"
+
+[env]
+# Model downloads stay inside the project (deleted with it).
+HF_HOME = "{{config_root}}/.cache/huggingface"

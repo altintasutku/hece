@@ -3,7 +3,7 @@
 Hece is an open-source desktop voice-dictation app. A global hotkey starts recording, speech is
 transcribed (local Whisper via CTranslate2, or a cloud provider), passed through quality layers
 (vocabulary, hallucination filter, confidence signal, optional guarded LLM cleanup), and inserted
-into the focused window. Linux (KDE Plasma Wayland) first; macOS and Windows later.
+into the focused window. Windows first; Linux and macOS later.
 
 ## Layout
 
@@ -13,7 +13,7 @@ into the focused window. Linux (KDE Plasma Wayland) first; macOS and Windows lat
 | `crates/hece-engine` | Local Whisper (CTranslate2); lib + bin; feature `cuda` (off by default) |
 | `crates/hece-providers` | `Provider` trait, STT adapters, API key handling |
 | `crates/hece-audio` | Microphone capture (cpal) and resampling to 16 kHz mono; needs `libasound2-dev` on Linux |
-| `crates/hece-platform` | `Platform` trait + Linux impl: portal shortcuts, paste, clipboard, window class |
+| `crates/hece-platform` | Windows: global hotkey, clipboard + paste, focused window |
 | `crates/hece` | Daemon + CLI binary |
 | `apps/settings` | Tauri 2 settings UI (not created yet) |
 
@@ -28,6 +28,7 @@ cargo test --workspace
 ```
 
 - Run the daemon/CLI: `cargo run -p hece`
+- Turkish model (CTranslate2, into `.cache/models`): `uv run scripts/prepare_model.py`
 - Engine with CUDA: `CUDA_ARCH_LIST="8.9;12.0" CMAKE_BUILD_PARALLEL_LEVEL=4 CARGO_BUILD_JOBS=4 cargo build -p hece-engine --features cuda-dynamic`
   (never two CUDA builds at once; details in `crates/hece-engine/README.md`)
 - Never use `--all-features`; `cuda` needs a CUDA toolchain and CI does not have one.
@@ -48,7 +49,7 @@ cargo test --workspace
 - `unwrap()` / `expect()` outside tests.
 - `#[allow(...)]` without `reason = "..."` (enforced by `clippy::allow_attributes_without_reason`); every `unsafe` block needs a `// SAFETY:` comment (`clippy::undocumented_unsafe_blocks`).
 - Debug prints (`dbg!`, stray `println!`/`eprintln!`). User-facing CLI output goes through one output module that allows `clippy::print_stdout` with a `reason`.
-- Kernel input access: evdev, uinput, `input` group membership, ydotool. Global shortcuts go through the desktop portal.
+- Low-level input hooks and injection beyond one paste chord: `WH_KEYBOARD_LL`, evdev, uinput, ydotool. Global shortcuts use `RegisterHotKey` (Windows) or the desktop portal (Linux).
 - Key-by-key typing. Insertion is clipboard + one paste chord.
 
 ### Conventions

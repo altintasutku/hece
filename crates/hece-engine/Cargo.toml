@@ -28,6 +28,11 @@ ct2rs = { workspace = true, optional = true }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+interprocess.workspace = true
+tokio.workspace = true
+widestring.workspace = true
+
 [dev-dependencies]
 serde_json.workspace = true
 hound.workspace = true

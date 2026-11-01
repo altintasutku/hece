@@ -1,5 +1,6 @@
-//! The worker server: a [`Backend`] behind a unix socket speaking the framed JSON protocol of
-//! `hece_core::ipc`. One connection is served at a time; the worker exits after an idle period.
+//! The worker server: a [`Backend`] behind the worker socket (a named pipe on Windows) speaking
+//! the framed JSON protocol of `hece_core::ipc`. One connection is served at a time; the worker
+//! exits after an idle period.
 //!
 //! Logging rule: requests are never logged (they hold vocabulary terms and audio) and IPC
 //! errors are logged by code and length only, because codec messages can echo input.
@@ -8,7 +9,6 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::io::{ErrorKind, Read, Write};
 use std::net::Shutdown;
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::PoisonError;
@@ -24,10 +24,11 @@ use hece_core::ipc::{
 use crate::audio::SAMPLE_RATE;
 use crate::engine::ComputeKind;
 use crate::error::EngineError;
+use crate::socket::{Conn, Listener, accept, prepare_listener};
 
 /// How long a connection may stay silent between frames before it is closed.
 const READ_TIMEOUT: Duration = CONN_IDLE_TIMEOUT;
-/// Pause between accept polls while idle.
+/// How long one accept poll waits while idle.
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 /// How often the watchdog checks its deadline.
 const WATCHDOG_POLL: Duration = Duration::from_millis(100);
@@ -319,7 +320,7 @@ fn watchdog_loop(deadline: &Deadline, done: &AtomicBool, on_expire: &(dyn Fn() +
     reason = "owning the listener closes the socket when serve returns"
 )]
 pub fn serve<B: Backend>(
-    listener: UnixListener,
+    listener: Listener,
     backend: &mut B,
     idle_ttl: Duration,
 ) -> Result<(), EngineError> {
@@ -330,13 +331,11 @@ pub fn serve<B: Backend>(
 /// `Shutdown`. The idle clock restarts after every response and never fires during a request.
 /// A watchdog thread calls `opts.on_expire` if a request outlives its deadline.
 pub fn serve_with<B: Backend>(
-    listener: &UnixListener,
+    listener: &Listener,
     backend: &mut B,
     opts: &ServeOptions,
 ) -> Result<(), EngineError> {
-    listener
-        .set_nonblocking(true)
-        .map_err(|e| EngineError::Socket(e.to_string()))?;
+    prepare_listener(listener).map_err(|e| EngineError::Socket(e.to_string()))?;
     let deadline: Deadline = Mutex::new(None);
     let done = AtomicBool::new(false);
     std::thread::scope(|scope| {
@@ -359,37 +358,37 @@ struct Watch<'a> {
 }
 
 fn accept_loop<B: Backend>(
-    listener: &UnixListener,
+    listener: &Listener,
     backend: &mut B,
     idle_ttl: Duration,
     watch: &Watch<'_>,
 ) -> Result<(), EngineError> {
     let mut last_activity = Instant::now();
     loop {
-        match listener.accept() {
-            Ok((stream, _)) => {
+        match accept(listener, POLL_INTERVAL) {
+            Ok(Some(stream)) => {
                 if let Closed::Shutdown =
                     handle_connection(stream, backend, &mut last_activity, watch)
                 {
                     return Ok(());
                 }
+                continue;
             }
+            Ok(None) => {}
             Err(e) => {
-                if e.kind() != ErrorKind::WouldBlock {
-                    tracing::warn!(kind = ?e.kind(), "engine.accept_failed");
-                }
-                if last_activity.elapsed() >= idle_ttl {
-                    tracing::info!("engine.idle_exit");
-                    return Ok(());
-                }
+                tracing::warn!(kind = ?e.kind(), "engine.accept_failed");
                 std::thread::sleep(POLL_INTERVAL);
             }
+        }
+        if last_activity.elapsed() >= idle_ttl {
+            tracing::info!("engine.idle_exit");
+            return Ok(());
         }
     }
 }
 
 fn handle_connection<B: Backend>(
-    mut stream: UnixStream,
+    mut stream: Conn,
     backend: &mut B,
     last_activity: &mut Instant,
     watch: &Watch<'_>,
@@ -432,7 +431,7 @@ fn handle_connection<B: Backend>(
 
 /// Lets a client that is still sending an oversized frame finish, so it reads our error
 /// instead of a connection reset. Bounded in bytes and time.
-fn drain_and_close(stream: &mut UnixStream, announced: usize) {
+fn drain_and_close(stream: &mut Conn, announced: usize) {
     let _ = stream.shutdown(Shutdown::Write);
     let deadline = Instant::now() + DRAIN_TIME;
     let mut remaining = announced.min(DRAIN_LIMIT);
@@ -453,7 +452,7 @@ fn drain_and_close(stream: &mut UnixStream, announced: usize) {
 }
 
 /// Reads one request. `Ok(None)` is a clean end of the connection (EOF or idle timeout).
-fn read_request(stream: &mut UnixStream) -> Result<Option<Request>, IpcError> {
+fn read_request(stream: &mut Conn) -> Result<Option<Request>, IpcError> {
     let mut header = [0u8; 4];
     if let Err(e) = stream.read_exact(&mut header) {
         // EOF and idle timeout end the connection quietly; anything else is worth a trace.
@@ -480,7 +479,7 @@ fn read_request(stream: &mut UnixStream) -> Result<Option<Request>, IpcError> {
     decode_body(&body).map(Some)
 }
 
-fn write_response(stream: &mut UnixStream, response: &Response) -> Result<(), ()> {
+fn write_response(stream: &mut Conn, response: &Response) -> Result<(), ()> {
     let frame = encode_frame(response).map_err(|e| {
         tracing::error!(code = e.code(), "engine.encode_failed");
     })?;

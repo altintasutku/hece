@@ -1,4 +1,4 @@
-//! Hece engine worker binary: `hece-engine serve` runs the unix socket worker.
+//! Hece engine worker binary: `hece-engine serve` runs the socket (named pipe on Windows) worker.
 //!
 //! Exit codes: 0 normal, 2 built without CUDA, 3 another worker is running, 4 socket or
 //! runtime-dir error, 5 killed by the request watchdog, 64 bad command line.

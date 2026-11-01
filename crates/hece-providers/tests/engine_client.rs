@@ -1,4 +1,5 @@
-//! Tests for the engine worker client against a fake worker on a unix socket.
+//! Tests for the engine worker client against a fake worker on a unix socket (a named pipe on
+//! Windows).
 #![allow(clippy::unwrap_used, reason = "tests may unwrap")]
 
 use std::path::{Path, PathBuf};
@@ -12,8 +13,107 @@ use hece_providers::engine_client::{
     EngineClient, EngineClientError, EngineConfig, ProcessSpawner, Spawner,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{UnixListener, UnixStream};
-use tokio::process::{Child, Command};
+use tokio::process::Child;
+
+use platform::{Conn, Listener, exit_3, pid_alive, sleeper};
+
+/// Fake worker transport and helper processes.
+#[cfg(unix)]
+mod platform {
+    use std::io;
+    use std::path::Path;
+
+    use tokio::net::UnixListener;
+    use tokio::process::Command;
+
+    pub type Conn = tokio::net::UnixStream;
+
+    pub struct Listener(UnixListener);
+
+    impl Listener {
+        pub fn bind(socket: &Path) -> io::Result<Self> {
+            let _ = std::fs::remove_file(socket);
+            UnixListener::bind(socket).map(Self)
+        }
+
+        pub async fn accept(&mut self) -> io::Result<Conn> {
+            self.0.accept().await.map(|(s, _)| s)
+        }
+    }
+
+    pub fn pid_alive(pid: u32) -> bool {
+        Path::new(&format!("/proc/{pid}")).exists()
+    }
+
+    /// A process that lives for `secs` seconds.
+    pub fn sleeper(secs: u32) -> Command {
+        let mut c = Command::new("sleep");
+        c.arg(secs.to_string());
+        c
+    }
+
+    /// A process that exits with code 3 at once.
+    pub fn exit_3() -> Command {
+        let mut c = Command::new("sh");
+        c.args(["-c", "exit 3"]);
+        c
+    }
+}
+
+/// Fake worker transport and helper processes.
+#[cfg(windows)]
+mod platform {
+    use std::io;
+    use std::path::Path;
+    use std::process::Stdio;
+
+    use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
+    use tokio::process::Command;
+
+    pub type Conn = NamedPipeServer;
+
+    /// Keeps one unconnected pipe instance ready, like a real listener.
+    pub struct Listener {
+        name: String,
+        next: NamedPipeServer,
+    }
+
+    impl Listener {
+        pub fn bind(socket: &Path) -> io::Result<Self> {
+            let name = hece_core::ipc::pipe_name(socket);
+            let next = ServerOptions::new().create(&name)?;
+            Ok(Self { name, next })
+        }
+
+        pub async fn accept(&mut self) -> io::Result<Conn> {
+            self.next.connect().await?;
+            let fresh = ServerOptions::new().create(&self.name)?;
+            Ok(std::mem::replace(&mut self.next, fresh))
+        }
+    }
+
+    pub fn pid_alive(pid: u32) -> bool {
+        std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+            .output()
+            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&format!("\"{pid}\"")))
+    }
+
+    /// A process that lives for about `secs` seconds (`ping` waits one second per echo).
+    pub fn sleeper(secs: u32) -> Command {
+        let mut c = Command::new("ping");
+        c.args(["-n", &(secs + 1).to_string(), "127.0.0.1"])
+            .stdout(Stdio::null());
+        c
+    }
+
+    /// A process that exits with code 3 at once.
+    pub fn exit_3() -> Command {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "exit 3"]);
+        c
+    }
+}
 
 #[derive(Debug, Clone)]
 enum Mode {
@@ -36,10 +136,6 @@ struct FakeSpawner {
     pids: Mutex<Vec<u32>>,
 }
 
-fn pid_alive(pid: u32) -> bool {
-    Path::new(&format!("/proc/{pid}")).exists()
-}
-
 async fn wait_gone(pid: u32) {
     for _ in 0..100 {
         if !pid_alive(pid) {
@@ -54,9 +150,8 @@ impl Spawner for FakeSpawner {
     fn spawn(&self, _cfg: &EngineConfig) -> Result<Child, EngineClientError> {
         let n = self.spawns.fetch_add(1, Ordering::SeqCst);
         let mode = self.modes[n.min(self.modes.len() - 1)].clone();
-        let _ = std::fs::remove_file(&self.socket);
-        let listener = UnixListener::bind(&self.socket)
-            .map_err(|e| EngineClientError::Spawn(e.to_string()))?;
+        let listener =
+            Listener::bind(&self.socket).map_err(|e| EngineClientError::Spawn(e.to_string()))?;
         let socket = self.socket.clone();
         let seen = Arc::clone(&self.seen);
         let overlap = Arc::clone(&self.overlap);
@@ -64,8 +159,7 @@ impl Spawner for FakeSpawner {
             serve(listener, mode, seen, overlap).await;
             let _ = std::fs::remove_file(&socket);
         });
-        let child = Command::new("sleep")
-            .arg("60")
+        let child = sleeper(60)
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| EngineClientError::Spawn(e.to_string()))?;
@@ -81,7 +175,7 @@ impl Spawner for FakeSpawner {
     }
 }
 
-async fn read_req(s: &mut UnixStream) -> Option<Request> {
+async fn read_req(s: &mut Conn) -> Option<Request> {
     let mut h = [0u8; 4];
     s.read_exact(&mut h).await.ok()?;
     let mut body = vec![0u8; frame_len(h).ok()?];
@@ -89,7 +183,7 @@ async fn read_req(s: &mut UnixStream) -> Option<Request> {
     decode_body(&body).ok()
 }
 
-async fn write_resp(s: &mut UnixStream, r: &Response) {
+async fn write_resp(s: &mut Conn, r: &Response) {
     let _ = s.write_all(&encode_frame(r).unwrap()).await;
 }
 
@@ -104,12 +198,12 @@ fn transcript(text: &str) -> Response {
 }
 
 async fn serve(
-    listener: UnixListener,
+    mut listener: Listener,
     mode: Mode,
     seen: Arc<Mutex<Vec<Request>>>,
     overlap: Arc<AtomicBool>,
 ) {
-    while let Ok((mut s, _)) = listener.accept().await {
+    while let Ok(mut s) = listener.accept().await {
         while let Some(req) = read_req(&mut s).await {
             seen.lock().unwrap().push(req.clone());
             match req {
@@ -200,10 +294,12 @@ fn fixture_with(
     base: Duration,
     tweak: impl FnOnce(&mut EngineConfig),
 ) -> Fixture {
-    use std::os::unix::fs::DirBuilderExt;
     let dir = std::env::temp_dir().join(format!("hec-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::DirBuilder::new().mode(0o700).create(&dir).unwrap();
+    let builder = &mut std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(builder, 0o700);
+    builder.create(&dir).unwrap();
     let socket = dir.join("e.sock");
     assert!(socket.as_os_str().len() < 108);
     let spawner = Arc::new(FakeSpawner {
@@ -440,8 +536,7 @@ struct NeverBinds {
 
 impl Spawner for NeverBinds {
     fn spawn(&self, _cfg: &EngineConfig) -> Result<Child, EngineClientError> {
-        let child = Command::new("sleep")
-            .arg("30")
+        let child = sleeper(30)
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| EngineClientError::Spawn(e.to_string()))?;
@@ -475,11 +570,10 @@ impl Spawner for OtherOwnsSocket {
         let socket = self.socket.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
-            let listener = UnixListener::bind(&socket).unwrap();
+            let listener = Listener::bind(&socket).unwrap();
             serve(listener, Mode::Normal, Arc::default(), Arc::default()).await;
         });
-        Command::new("sh")
-            .args(["-c", "exit 3"])
+        exit_3()
             .spawn()
             .map_err(|e| EngineClientError::Spawn(e.to_string()))
     }
@@ -526,6 +620,9 @@ fn default_config_needs_a_runtime_dir() {
         assert_eq!(err.code(), "no_runtime_dir");
     }
     let c = EngineConfig::with_runtime_dir(m, Some("/run/user/1".into())).unwrap();
-    assert_eq!(c.socket, Path::new("/run/user/1/hece/engine.sock"));
+    assert_eq!(
+        c.socket,
+        Path::new("/run/user/1").join("hece").join("engine.sock")
+    );
     assert_eq!(c.compute, "int8_float16");
 }

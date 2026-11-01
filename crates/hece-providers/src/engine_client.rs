@@ -2,7 +2,7 @@
 //! requests with timeouts, and typed failures. Requests and responses are never logged beyond
 //! codes and sizes (they carry audio, transcripts and personal vocabulary).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +13,10 @@ use hece_core::ipc::{
 };
 use hece_core::{Transcript, Vocabulary};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::UnixStream;
+#[cfg(unix)]
+use tokio::net::UnixStream as Stream;
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::NamedPipeClient as Stream;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::time::{Instant, sleep, timeout};
@@ -23,10 +26,28 @@ use tokio::time::{Instant, sleep, timeout};
 const RECONNECT_MARGIN: Duration = Duration::from_secs(5);
 
 const RETRY_INTERVAL: Duration = Duration::from_millis(100);
+/// Pause before retrying a named pipe whose instances are all busy.
+#[cfg(windows)]
+const PIPE_BUSY_RETRY: Duration = Duration::from_millis(10);
 /// How long to wait for a worker that won the bind race before spawning another.
 const RESPAWN_GRACE: Duration = Duration::from_secs(1);
 /// Worker exit code meaning another worker already owns the socket.
 const EXIT_ALREADY_RUNNING: i32 = 3;
+/// `CREATE_NEW_PROCESS_GROUP` process creation flag.
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+/// `CREATE_NO_WINDOW` process creation flag.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+/// Windows `ERROR_PIPE_BUSY`: the worker is alive but every pipe instance is taken.
+#[cfg(windows)]
+const ERROR_PIPE_BUSY: i32 = 231;
+/// Environment variable naming the per-user runtime directory.
+#[cfg(unix)]
+const RUNTIME_DIR_VAR: &str = "XDG_RUNTIME_DIR";
+/// Environment variable naming the per-user runtime directory.
+#[cfg(windows)]
+const RUNTIME_DIR_VAR: &str = "LOCALAPPDATA";
 /// Samples per second of the wire audio format.
 const SAMPLE_RATE: u64 = 16_000;
 
@@ -69,7 +90,8 @@ pub enum EngineClientError {
     /// Socket I/O failed.
     #[error("engine i/o failed: {0}")]
     Io(String),
-    /// `XDG_RUNTIME_DIR` is not set, so there is no safe socket location.
+    /// `XDG_RUNTIME_DIR` (`LOCALAPPDATA` on Windows) is not set, so there is no safe socket
+    /// location.
     #[error("no runtime directory available for the engine socket")]
     NoRuntimeDir,
 }
@@ -99,7 +121,8 @@ impl EngineClientError {
 pub struct EngineConfig {
     /// Explicit path of the `hece-engine` binary; otherwise next to the current exe, then `PATH`.
     pub engine_path: Option<PathBuf>,
-    /// Unix socket path of the worker.
+    /// Socket path of the worker; on Windows the worker listens on
+    /// [`hece_core::ipc::pipe_name`] of this path.
     pub socket: PathBuf,
     /// Directory holding the `CTranslate2` model.
     pub model_dir: PathBuf,
@@ -117,10 +140,10 @@ pub struct EngineConfig {
 }
 
 impl EngineConfig {
-    /// Defaults: socket `$XDG_RUNTIME_DIR/hece/engine.sock`, idle TTL 30 min, connect 20 s,
-    /// base request timeout 120 s.
+    /// Defaults: socket `$XDG_RUNTIME_DIR/hece/engine.sock` (`%LOCALAPPDATA%\hece\engine.sock` on
+    /// Windows), idle TTL 30 min, connect 20 s, base request timeout 120 s.
     pub fn default_for(model_dir: PathBuf) -> Result<Self, EngineClientError> {
-        Self::with_runtime_dir(model_dir, std::env::var_os("XDG_RUNTIME_DIR"))
+        Self::with_runtime_dir(model_dir, std::env::var_os(RUNTIME_DIR_VAR))
     }
 
     /// Like [`EngineConfig::default_for`] with the runtime directory given explicitly; unset or
@@ -166,7 +189,10 @@ impl ProcessSpawner {
         }
         let sibling = std::env::current_exe()
             .ok()
-            .and_then(|exe| exe.parent().map(|d| d.join("hece-engine")))
+            .and_then(|exe| {
+                exe.parent()
+                    .map(|d| d.join(format!("hece-engine{}", std::env::consts::EXE_SUFFIX)))
+            })
             .filter(|p| p.is_file());
         Ok(sibling.unwrap_or_else(|| PathBuf::from("hece-engine")))
     }
@@ -175,7 +201,8 @@ impl ProcessSpawner {
 impl Spawner for ProcessSpawner {
     fn spawn(&self, cfg: &EngineConfig) -> Result<Child, EngineClientError> {
         let program = Self::resolve(cfg)?;
-        Command::new(program)
+        let mut command = Command::new(program);
+        command
             .arg("serve")
             .arg("--socket")
             .arg(&cfg.socket)
@@ -183,9 +210,15 @@ impl Spawner for ProcessSpawner {
             .arg(cfg.idle_ttl.as_secs().to_string())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
-            // Own process group: a signal aimed at the daemon's group does not reach the worker.
-            .process_group(0)
+            .stderr(Stdio::inherit());
+        // Own process group: a signal aimed at the daemon's group does not reach the worker.
+        #[cfg(unix)]
+        command.process_group(0);
+        // Windows: Ctrl+C aimed at the daemon's console does not reach the worker, and the
+        // worker never opens a console window of its own.
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+        command
             // The worker keeps its loaded model across a daemon restart.
             .kill_on_drop(false)
             .spawn()
@@ -201,7 +234,7 @@ impl Spawner for ProcessSpawner {
 
 #[derive(Debug, Default)]
 struct State {
-    conn: Option<UnixStream>,
+    conn: Option<Stream>,
     /// The worker this client started, if any; only that one is ever killed.
     child: Option<Child>,
     /// When `conn` last completed a request.
@@ -239,6 +272,29 @@ impl Fail {
     }
 }
 
+/// Connects to the worker socket; `None` when no worker listens.
+#[cfg(unix)]
+async fn open(socket: &Path, _deadline: Instant) -> Option<Stream> {
+    Stream::connect(socket).await.ok()
+}
+
+/// Connects to the worker's named pipe; `None` when no worker listens. While every instance
+/// is busy the worker is alive, so this waits (until `deadline`) instead of reporting `None`,
+/// which would spawn another worker.
+#[cfg(windows)]
+async fn open(socket: &Path, deadline: Instant) -> Option<Stream> {
+    let name = hece_core::ipc::pipe_name(socket);
+    loop {
+        match tokio::net::windows::named_pipe::ClientOptions::new().open(&name) {
+            Ok(stream) => return Some(stream),
+            Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY) && Instant::now() < deadline => {
+                sleep(PIPE_BUSY_RETRY).await;
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
 fn io_error(e: &std::io::Error) -> EngineClientError {
     use std::io::ErrorKind::{BrokenPipe, ConnectionAborted, ConnectionReset, UnexpectedEof};
     match e.kind() {
@@ -253,7 +309,7 @@ fn protocol_error(e: &hece_core::ipc::IpcError) -> EngineClientError {
     EngineClientError::Protocol(e.code().to_owned())
 }
 
-async fn round_trip(conn: &mut UnixStream, req: &Request) -> Result<Response, Fail> {
+async fn round_trip(conn: &mut Stream, req: &Request) -> Result<Response, Fail> {
     let frame = encode_frame(req).map_err(|e| Fail::Write(protocol_error(&e)))?;
     conn.write_all(&frame)
         .await
@@ -456,14 +512,14 @@ impl EngineClient {
         &self,
         state: &mut State,
         allow_spawn: bool,
-    ) -> Result<Option<UnixStream>, EngineClientError> {
+    ) -> Result<Option<Stream>, EngineClientError> {
         let deadline = Instant::now() + self.cfg.connect_timeout;
         let mut spawned = false;
         // After losing the bind race to another worker, give that one time to come up before
         // spawning again (it may also have exited on its idle TTL in the meantime).
         let mut respawn_after = Instant::now();
         let mut stream = loop {
-            if let Ok(stream) = UnixStream::connect(&self.cfg.socket).await {
+            if let Some(stream) = open(&self.cfg.socket, deadline).await {
                 break stream;
             }
             if !allow_spawn {

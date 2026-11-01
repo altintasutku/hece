@@ -8,7 +8,7 @@ Background voice dictation for the desktop. Press a hotkey, speak, and the text 
 - Tiny when idle; the local model loads on demand and is released when idle
 - Local OpenAI-compatible API so other apps can share one loaded model
 
-Status: early development. Linux (KDE Plasma Wayland) first; macOS and Windows later.
+Status: early development. Windows first; Linux and macOS later.
 
 License: MIT
 

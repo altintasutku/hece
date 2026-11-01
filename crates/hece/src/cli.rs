@@ -31,6 +31,9 @@ pub enum Command {
     Devices,
     /// Record once from the microphone (Enter stops), transcribe and print the text.
     Dictate(DictateArgs),
+    /// Dictate into any window: Ctrl+Shift+Space records, Ctrl+Shift+Backspace cancels.
+    #[cfg(windows)]
+    Run(RunArgs),
 }
 
 /// Arguments of `hece bench`.
@@ -64,21 +67,16 @@ pub struct BenchArgs {
     pub short: Option<PathBuf>,
 }
 
-/// Arguments of `hece dictate`. Without `--api-base` the local engine is used.
+/// Which provider transcribes, shared by `dictate` and `run`. Without `--api-base` the local
+/// engine is used.
 #[derive(Debug, Args)]
-pub struct DictateArgs {
-    /// Microphone name from `hece devices` (default: the system default).
-    #[arg(long)]
-    pub device: Option<String>,
+pub struct ProviderArgs {
     /// Spoken language code (default: auto-detect).
     #[arg(long)]
     pub language: Option<String>,
     /// Vocabulary file (one term per line).
     #[arg(long)]
     pub vocab: Option<PathBuf>,
-    /// Recording limit in seconds.
-    #[arg(long, default_value_t = 600)]
-    pub max_secs: u64,
     /// `CTranslate2` model directory for the local engine.
     #[arg(long, conflicts_with = "api_base")]
     pub model: Option<PathBuf>,
@@ -97,6 +95,46 @@ pub struct DictateArgs {
     /// Ask the API for segments (`verbose_json`; Whisper models only).
     #[arg(long, requires = "api_base")]
     pub segments: bool,
+}
+
+/// Arguments of `hece dictate`.
+#[derive(Debug, Args)]
+pub struct DictateArgs {
+    /// Microphone name from `hece devices` (default: the system default).
+    #[arg(long)]
+    pub device: Option<String>,
+    /// Recording limit in seconds.
+    #[arg(long, default_value_t = 600)]
+    pub max_secs: u64,
+    /// Transcription provider.
+    #[command(flatten)]
+    pub provider: ProviderArgs,
+}
+
+/// How the record shortcut works.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum ModeArg {
+    /// Hold to talk, release to stop.
+    Hold,
+    /// Press to start, press again to stop.
+    Toggle,
+}
+
+/// Arguments of `hece run`.
+#[derive(Debug, Args)]
+pub struct RunArgs {
+    /// Microphone name from `hece devices` (default: the system default).
+    #[arg(long)]
+    pub device: Option<String>,
+    /// Recording limit in seconds.
+    #[arg(long, default_value_t = 600)]
+    pub max_secs: u64,
+    /// How Ctrl+Shift+Space works.
+    #[arg(long, value_enum, default_value_t = ModeArg::Hold)]
+    pub mode: ModeArg,
+    /// Transcription provider.
+    #[command(flatten)]
+    pub provider: ProviderArgs,
 }
 
 #[cfg(test)]

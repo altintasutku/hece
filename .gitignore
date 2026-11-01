@@ -14,3 +14,5 @@
 *.webm
 *.pcm
 *.raw
+# Models and download caches (mise.toml [env])
+/.cache/

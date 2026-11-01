@@ -1,5 +1,5 @@
 //! `hece dictate`: one recording from the microphone, stopped with Enter, transcribed and
-//! printed. A way to try capture and providers before the daemon exists.
+//! printed. Also builds the provider shared with `hece run`.
 
 use std::sync::Arc;
 
@@ -12,31 +12,21 @@ use hece_providers::{
 };
 use tokio::sync::mpsc;
 
-use crate::cli::DictateArgs;
+use crate::cli::{DictateArgs, ProviderArgs};
 use crate::output;
 
-fn provider(args: &DictateArgs) -> anyhow::Result<Arc<dyn Provider>> {
-    if let Some(base) = &args.api_base {
-        let mut cfg = OpenAiConfig::new("openai", base, &args.api_model);
-        cfg.segments = args.segments;
-        let key = args
-            .key_env
-            .clone()
-            .map(|var| Arc::new(KeySource::new("openai", Some(var), Arc::new(KeyringStore))));
-        return Ok(Arc::new(OpenAiProvider::new(cfg, key)?));
-    }
-    let model = args
-        .model
-        .clone()
-        .context("either --model (local engine) or --api-base is required")?;
-    let mut cfg = EngineConfig::default_for(model)?;
-    cfg.engine_path.clone_from(&args.engine);
-    let client = EngineClient::new(cfg, Arc::new(ProcessSpawner));
-    Ok(Arc::new(LocalProvider::new("local", Arc::new(client))))
+/// The configured provider, plus the engine client when it is the local one (for prewarm).
+pub struct Setup {
+    pub provider: Arc<dyn Provider>,
+    #[cfg_attr(
+        not(windows),
+        expect(dead_code, reason = "read by hece run, which is Windows-only")
+    )]
+    pub engine: Option<Arc<EngineClient>>,
+    pub vocabulary: Option<Vocabulary>,
 }
 
-pub async fn execute(args: &DictateArgs) -> anyhow::Result<()> {
-    let provider = provider(args)?;
+pub fn setup(args: &ProviderArgs) -> anyhow::Result<Setup> {
     let vocabulary = match &args.vocab {
         Some(path) => Some(Vocabulary::parse(
             &std::fs::read_to_string(path)
@@ -44,6 +34,35 @@ pub async fn execute(args: &DictateArgs) -> anyhow::Result<()> {
         )),
         None => None,
     };
+    if let Some(base) = &args.api_base {
+        let mut cfg = OpenAiConfig::new("openai", base, &args.api_model);
+        cfg.segments = args.segments;
+        let key = args
+            .key_env
+            .clone()
+            .map(|var| Arc::new(KeySource::new("openai", Some(var), Arc::new(KeyringStore))));
+        return Ok(Setup {
+            provider: Arc::new(OpenAiProvider::new(cfg, key)?),
+            engine: None,
+            vocabulary,
+        });
+    }
+    let model = args
+        .model
+        .clone()
+        .context("either --model (local engine) or --api-base is required")?;
+    let mut cfg = EngineConfig::default_for(model)?;
+    cfg.engine_path.clone_from(&args.engine);
+    let engine = Arc::new(EngineClient::new(cfg, Arc::new(ProcessSpawner)));
+    Ok(Setup {
+        provider: Arc::new(LocalProvider::new("local", Arc::clone(&engine))),
+        engine: Some(engine),
+        vocabulary,
+    })
+}
+
+pub async fn execute(args: &DictateArgs) -> anyhow::Result<()> {
+    let setup = setup(&args.provider)?;
     let cfg = CaptureConfig {
         device: args.device.clone(),
         max_duration: std::time::Duration::from_secs(args.max_secs),
@@ -74,23 +93,23 @@ pub async fn execute(args: &DictateArgs) -> anyhow::Result<()> {
         }
     }
     let recording = tokio::task::spawn_blocking(move || capture.stop()).await??;
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "sample counts of a recording are far below f64's exact integer range"
-    )]
-    let secs = recording.samples.len() as f64 / 16_000.0;
-    output::status(&format!("captured {secs:.1} s, transcribing"));
+    output::status("transcribing");
     let req = ProviderRequest {
         audio: &recording.samples,
-        language: args.language.as_deref(),
-        vocabulary: vocabulary.as_ref(),
+        language: args.provider.language.as_deref(),
+        vocabulary: setup.vocabulary.as_ref(),
         prompt_prefix: hece_core::DEFAULT_PROMPT_PREFIX,
         prompt_tokens: hece_core::DEFAULT_PROMPT_TOKENS,
     };
-    let transcript = provider
+    let transcript = setup
+        .provider
         .transcribe(req)
         .await
-        .map_err(|e| anyhow::anyhow!("{e} ({})", e.code()))?;
+        .map_err(|e| anyhow::anyhow!("{e} ({})", e.code()))?
+        .with_quality_layers();
+    if transcript.low_confidence {
+        output::status("may be misheard");
+    }
     output::line(&transcript.text);
     Ok(())
 }

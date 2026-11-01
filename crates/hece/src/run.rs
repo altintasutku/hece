@@ -1,19 +1,19 @@
-//! The daemon: dictation into any window. Hotkey, control-pipe and capture events feed the
-//! recording state machine; its actions start and stop captures, run transcriptions and paste
-//! the results in recording order. Every failure is reported as a toast. Status lines,
-//! notifications and logs never contain transcript text.
+//! The daemon: dictation into any window. Shortcut, tray, control-pipe and capture events feed
+//! the recording state machine; its actions start and stop captures, run transcriptions and
+//! paste the results in recording order. The tray icon shows the state; every failure is also
+//! a toast. Status lines, notifications and logs never contain transcript text.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use hece_audio::{AudioError, Capture, CaptureConfig, CaptureEvent, Recording};
 use hece_core::recorder::{Action, Input, Mode, Recorder, RecordingId};
 use hece_core::{Transcript, Vocabulary};
 use hece_platform::{
-    CANCEL_SHORTCUT, ControlListener, ControlRequest, HotkeyEvent, Hotkeys, Inserted,
-    RECORD_SHORTCUT, Shortcut, Window,
+    CANCEL_SHORTCUT, ControlListener, ControlRequest, Desktop, DesktopEvent, HotkeyEvent, Inserted,
+    MenuAction, RECORD_SHORTCUT, Shortcut, TrayState, Window,
 };
 use hece_providers::{Outcome, ProviderError, ProviderRequest, Providers};
 use tokio::sync::{mpsc, oneshot};
@@ -26,19 +26,24 @@ use crate::providers::setup;
 
 /// Recordings shorter than this (0.3 s at 16 kHz) count as "nothing heard".
 const MIN_SAMPLES: usize = 4_800;
+/// How long a warning or error colour stays on the tray icon.
+const FLAG_FOR: Duration = Duration::from_secs(6);
+/// Time for the tray menu to close and focus to return before a re-paste.
+const MENU_CLOSE: Duration = Duration::from_millis(300);
 
 enum Msg {
-    Hotkey(HotkeyEvent),
+    Desktop(DesktopEvent),
     Control(ControlRequest),
     Capture(RecordingId, CaptureEvent),
     Captured(RecordingId, Result<Recording, AudioError>),
     Transcribed(RecordingId, Result<Outcome, ProviderError>),
+    RefreshTray,
 }
 
 type Tx = mpsc::UnboundedSender<Msg>;
 
-/// Prints `message` and shows it as a toast (failures and warnings).
-fn alert(message: &str) {
+/// Prints `message` and shows it as a toast.
+fn toast(message: &str) {
     output::status(message);
     let message = message.to_owned();
     tokio::task::spawn_blocking(move || hece_platform::notify("Hece", &message));
@@ -83,6 +88,9 @@ struct Daemon {
     mode: Mode,
     capture_cfg: CaptureConfig,
     history: Option<History>,
+    config_file: PathBuf,
+    state_dir: PathBuf,
+    desktop: Desktop,
     tx: Tx,
     recorder: Recorder,
     /// The recording in progress; capture events of older ones are ignored.
@@ -93,16 +101,51 @@ struct Daemon {
     tasks: HashMap<RecordingId, JoinHandle<()>>,
     results: HashMap<RecordingId, Transcript>,
     failures: HashMap<RecordingId, String>,
+    /// A warning/error colour shown on the tray until the given time.
+    flag: Option<(TrayState, Instant)>,
+    quit: bool,
 }
 
 impl Daemon {
+    fn pending(&self) -> usize {
+        // A target is kept from stop until the dictation is inserted, failed or cancelled.
+        self.targets.len()
+    }
+
     fn status(&self) -> String {
-        let pending = self.tasks.len() + self.results.len();
-        match (self.recorder.is_recording(), pending) {
+        match (self.recorder.is_recording(), self.pending()) {
             (true, _) => "recording".to_owned(),
             (false, 0) => "idle".to_owned(),
             (false, n) => format!("processing {n}"),
         }
+    }
+
+    fn refresh_tray(&mut self) {
+        let flagged = self.flag.filter(|(_, until)| Instant::now() < *until);
+        self.flag = flagged;
+        let state = if self.recorder.is_recording() {
+            TrayState::Recording
+        } else if self.pending() > 0 {
+            TrayState::Processing
+        } else {
+            flagged.map_or(TrayState::Idle, |(state, _)| state)
+        };
+        self.desktop.set_state(state);
+    }
+
+    /// Toast plus a temporary warning/error colour on the tray.
+    fn alert(&mut self, state: TrayState, message: &str) {
+        toast(message);
+        self.flag = Some((state, Instant::now() + FLAG_FOR));
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(FLAG_FOR).await;
+            let _ = tx.send(Msg::RefreshTray);
+        });
+    }
+
+    fn fail(&mut self, message: &str) {
+        self.alert(TrayState::Error, message);
     }
 
     /// Start/stop regardless of the hotkey mode.
@@ -136,11 +179,66 @@ impl Daemon {
         }
     }
 
+    async fn menu(&mut self, action: MenuAction) -> Option<Input> {
+        match action {
+            MenuAction::Toggle => return Some(self.toggle()),
+            MenuAction::Repaste | MenuAction::RepasteRaw => {
+                self.repaste(action == MenuAction::RepasteRaw).await;
+            }
+            MenuAction::Settings => {
+                let opened = std::process::Command::new("notepad.exe")
+                    .arg(&self.config_file)
+                    .spawn();
+                if opened.is_err() {
+                    self.fail("Could not open the config file.");
+                }
+            }
+            MenuAction::Logs => {
+                if hece_platform::open(&self.state_dir).is_err() {
+                    self.fail("Could not open the log folder.");
+                }
+            }
+            MenuAction::Quit => self.quit = true,
+        }
+        None
+    }
+
+    async fn repaste(&mut self, raw: bool) {
+        let Some(history) = self.history.clone() else {
+            self.fail("History is disabled, so there is nothing to paste again.");
+            return;
+        };
+        let entries = tokio::task::spawn_blocking(move || history.entries())
+            .await
+            .unwrap_or_default();
+        let Some(last) = entries.last() else {
+            self.fail("History is empty.");
+            return;
+        };
+        let text = if raw {
+            last.raw.clone()
+        } else {
+            last.text().to_owned()
+        };
+        tokio::time::sleep(MENU_CLOSE).await;
+        let pasted = tokio::task::spawn_blocking(move || hece_platform::insert(&text, None)).await;
+        if !matches!(pasted, Ok(Ok(Inserted::Pasted))) {
+            self.fail("Could not paste again.");
+        }
+    }
+
     async fn input(&mut self, msg: Msg) -> Option<Input> {
         match msg {
-            Msg::Hotkey(HotkeyEvent::Pressed(Shortcut::Record)) => Some(Input::Press),
-            Msg::Hotkey(HotkeyEvent::Released(Shortcut::Record)) => Some(Input::Release),
-            Msg::Hotkey(HotkeyEvent::Pressed(Shortcut::Cancel)) => Some(Input::Cancel),
+            Msg::Desktop(DesktopEvent::Hotkey(HotkeyEvent::Pressed(Shortcut::Record))) => {
+                Some(Input::Press)
+            }
+            Msg::Desktop(DesktopEvent::Hotkey(HotkeyEvent::Released(Shortcut::Record))) => {
+                Some(Input::Release)
+            }
+            Msg::Desktop(DesktopEvent::Hotkey(HotkeyEvent::Pressed(Shortcut::Cancel))) => {
+                Some(Input::Cancel)
+            }
+            Msg::Desktop(DesktopEvent::Menu(action)) => self.menu(action).await,
             Msg::Control(request) => self.control(request).await,
             Msg::Capture(id, event) if self.current == Some(id) => match event {
                 CaptureEvent::Live { latency } => {
@@ -149,15 +247,20 @@ impl Daemon {
                     None
                 }
                 CaptureEvent::LimitReached => {
-                    alert("Recording limit reached; transcribing what was recorded.");
+                    self.alert(
+                        TrayState::Warning,
+                        "Recording limit reached; transcribing what was recorded.",
+                    );
                     Some(Input::LimitReached)
                 }
                 CaptureEvent::StreamError { code } => {
-                    alert(&format!("Microphone error ({code}); stopping."));
+                    self.fail(&format!("Microphone error ({code}); stopping."));
                     Some(Input::LimitReached)
                 }
             },
-            Msg::Hotkey(HotkeyEvent::Released(Shortcut::Cancel)) | Msg::Capture(..) => None,
+            Msg::Desktop(DesktopEvent::Hotkey(HotkeyEvent::Released(Shortcut::Cancel)))
+            | Msg::Capture(..)
+            | Msg::RefreshTray => None,
             Msg::Captured(id, Ok(recording)) => {
                 let samples = recording.samples.len();
                 self.audio.insert(id, recording.samples);
@@ -165,7 +268,7 @@ impl Daemon {
             }
             Msg::Captured(id, Err(e)) => {
                 tracing::warn!(code = e.code(), "capture failed");
-                alert(&format!("{e} ({})", e.code()));
+                self.fail(&format!("{e} ({})", e.code()));
                 if self.current == Some(id) {
                     // The microphone never opened: end the recording.
                     return Some(Input::Cancel);
@@ -174,10 +277,8 @@ impl Daemon {
             }
             Msg::Transcribed(id, result) => {
                 self.tasks.remove(&id);
-                Some(Input::Transcribed {
-                    id,
-                    ok: self.transcribed(id, result),
-                })
+                let ok = self.transcribed(id, result);
+                Some(Input::Transcribed { id, ok })
             }
         }
     }
@@ -187,10 +288,13 @@ impl Daemon {
             Ok(outcome) => {
                 if let Some(notice) = &outcome.fell_back {
                     tracing::warn!(from = %notice.from, to = %notice.to, reason = %notice.reason, "fell back");
-                    alert(&format!(
-                        "{} failed ({}); {} transcribed this dictation.",
-                        notice.from, notice.reason, notice.to
-                    ));
+                    self.alert(
+                        TrayState::Warning,
+                        &format!(
+                            "{} failed ({}); {} transcribed this dictation.",
+                            notice.from, notice.reason, notice.to
+                        ),
+                    );
                 }
                 let t = outcome.transcript.with_quality_layers();
                 if t.text.is_empty() {
@@ -255,7 +359,7 @@ impl Daemon {
                     .failures
                     .remove(&id)
                     .unwrap_or_else(|| "Nothing heard.".to_owned());
-                alert(&why);
+                self.fail(&why);
             }
         }
     }
@@ -308,30 +412,38 @@ impl Daemon {
         let result =
             tokio::task::spawn_blocking(move || hece_platform::insert(&text, target)).await;
         match result {
-            Ok(Ok(Inserted::Pasted)) if low => alert("Inserted, but it may be misheard."),
-            Ok(Ok(Inserted::Pasted)) => output::status(&format!("inserted {chars} characters")),
-            Ok(Ok(Inserted::FocusChanged)) => {
-                alert(
-                    "Focus changed, so nothing was pasted. The text is on the clipboard (Ctrl+V).",
-                );
+            Ok(Ok(Inserted::Pasted)) if low => {
+                self.alert(TrayState::Warning, "Inserted, but it may be misheard.");
             }
+            Ok(Ok(Inserted::Pasted)) => output::status(&format!("inserted {chars} characters")),
+            Ok(Ok(Inserted::FocusChanged)) => self.alert(
+                TrayState::Warning,
+                "Focus changed, so nothing was pasted. The text is on the clipboard (Ctrl+V).",
+            ),
             Ok(Err(e)) => {
                 tracing::warn!(code = e.code(), "insert failed");
-                alert(&format!("{e} ({})", e.code()));
+                self.fail(&format!("{e} ({})", e.code()));
             }
-            Err(_) => alert("Insert failed."),
+            Err(_) => self.fail("Insert failed."),
         }
     }
 }
 
-/// Runs the daemon until Ctrl+C (or the end of the process).
-pub async fn execute(cfg: Config, state_dir: &Path, control: &Path) -> anyhow::Result<()> {
-    let listener = ControlListener::bind(control)?;
+/// Paths the daemon works with.
+pub struct Paths {
+    pub config_file: PathBuf,
+    pub state_dir: PathBuf,
+    pub control: PathBuf,
+}
+
+/// Runs the daemon until Ctrl+C or "Quit" in the tray.
+pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
+    let listener = ControlListener::bind(&paths.control)?;
     let setup = setup(&cfg)?;
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let hotkey_tx = tx.clone();
-    let _hotkeys = Hotkeys::listen(move |e| {
-        let _ = hotkey_tx.send(Msg::Hotkey(e));
+    let desktop_tx = tx.clone();
+    let desktop = Desktop::start(move |e| {
+        let _ = desktop_tx.send(Msg::Desktop(e));
     })?;
     let control_tx = tx.clone();
     tokio::spawn(async move {
@@ -347,7 +459,7 @@ pub async fn execute(cfg: Config, state_dir: &Path, control: &Path) -> anyhow::R
             output::status("loading the local model…");
             match engine.prewarm().await {
                 Ok(()) => output::status("model loaded"),
-                Err(e) => alert(&format!(
+                Err(e) => toast(&format!(
                     "The local model could not be loaded: {e} ({})",
                     e.code()
                 )),
@@ -376,7 +488,10 @@ pub async fn execute(cfg: Config, state_dir: &Path, control: &Path) -> anyhow::R
         history: cfg
             .history
             .enabled
-            .then(|| History::new(state_dir, &cfg.history)),
+            .then(|| History::new(&paths.state_dir, &cfg.history)),
+        config_file: paths.config_file,
+        state_dir: paths.state_dir,
+        desktop,
         tx,
         recorder: Recorder::new(mode, MIN_SAMPLES),
         current: None,
@@ -386,8 +501,10 @@ pub async fn execute(cfg: Config, state_dir: &Path, control: &Path) -> anyhow::R
         tasks: HashMap::new(),
         results: HashMap::new(),
         failures: HashMap::new(),
+        flag: None,
+        quit: false,
     };
-    loop {
+    while !daemon.quit {
         let msg = tokio::select! {
             msg = rx.recv() => msg,
             _ = tokio::signal::ctrl_c() => break,
@@ -398,6 +515,7 @@ pub async fn execute(cfg: Config, state_dir: &Path, control: &Path) -> anyhow::R
                 daemon.act(action).await;
             }
         }
+        daemon.refresh_tray();
     }
     tracing::info!("daemon stopping");
     if let Some(engine) = setup.engine {

@@ -1,0 +1,287 @@
+{
+  "timestamp_begin": 50365,
+  "eot": 50257,
+  "cases": [
+    {
+      "name": "two_segments_single_ending",
+      "tokens": [
+        50365,
+        100,
+        101,
+        50415,
+        50415,
+        102,
+        103,
+        50485
+      ],
+      "seek": 0,
+      "time_offset": 0.0,
+      "segment_size": 3000,
+      "segment_duration": 30.0,
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 1.0,
+          "tokens": [
+            50365,
+            100,
+            101,
+            50415
+          ]
+        },
+        {
+          "start": 1.0,
+          "end": 2.4,
+          "tokens": [
+            50415,
+            102,
+            103,
+            50485
+          ]
+        }
+      ],
+      "next_seek": 3000,
+      "single_timestamp_ending": true
+    },
+    {
+      "name": "trailing_text_without_closing",
+      "tokens": [
+        50365,
+        100,
+        50405,
+        50405,
+        101,
+        50455,
+        50455,
+        102
+      ],
+      "seek": 0,
+      "time_offset": 0.0,
+      "segment_size": 3000,
+      "segment_duration": 30.0,
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 0.8,
+          "tokens": [
+            50365,
+            100,
+            50405
+          ]
+        },
+        {
+          "start": 0.8,
+          "end": 1.8,
+          "tokens": [
+            50405,
+            101,
+            50455
+          ]
+        }
+      ],
+      "next_seek": 180,
+      "single_timestamp_ending": false
+    },
+    {
+      "name": "consecutive_at_end",
+      "tokens": [
+        50365,
+        100,
+        50415,
+        50415,
+        101,
+        50445,
+        50445
+      ],
+      "seek": 0,
+      "time_offset": 0.0,
+      "segment_size": 3000,
+      "segment_duration": 30.0,
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 1.0,
+          "tokens": [
+            50365,
+            100,
+            50415
+          ]
+        },
+        {
+          "start": 1.0,
+          "end": 1.6,
+          "tokens": [
+            50415,
+            101,
+            50445
+          ]
+        }
+      ],
+      "next_seek": 160,
+      "single_timestamp_ending": false
+    },
+    {
+      "name": "single_timestamp_ending",
+      "tokens": [
+        50365,
+        100,
+        101,
+        50440
+      ],
+      "seek": 0,
+      "time_offset": 0.0,
+      "segment_size": 3000,
+      "segment_duration": 30.0,
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 1.5,
+          "tokens": [
+            50365,
+            100,
+            101,
+            50440
+          ]
+        }
+      ],
+      "next_seek": 3000,
+      "single_timestamp_ending": true
+    },
+    {
+      "name": "no_timestamps",
+      "tokens": [
+        100,
+        101,
+        102
+      ],
+      "seek": 0,
+      "time_offset": 0.0,
+      "segment_size": 3000,
+      "segment_duration": 30.0,
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 30.0,
+          "tokens": [
+            100,
+            101,
+            102
+          ]
+        }
+      ],
+      "next_seek": 3000,
+      "single_timestamp_ending": false
+    },
+    {
+      "name": "only_begin_timestamp",
+      "tokens": [
+        100,
+        50365
+      ],
+      "seek": 0,
+      "time_offset": 0.0,
+      "segment_size": 3000,
+      "segment_duration": 30.0,
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 30.0,
+          "tokens": [
+            100,
+            50365
+          ]
+        }
+      ],
+      "next_seek": 3000,
+      "single_timestamp_ending": true
+    },
+    {
+      "name": "short_segment_offset",
+      "tokens": [
+        50365,
+        100,
+        50395,
+        50395,
+        101,
+        50420
+      ],
+      "seek": 3000,
+      "time_offset": 30.0,
+      "segment_size": 1200,
+      "segment_duration": 12.0,
+      "segments": [
+        {
+          "start": 30.0,
+          "end": 30.6,
+          "tokens": [
+            50365,
+            100,
+            50395
+          ]
+        },
+        {
+          "start": 30.6,
+          "end": 31.1,
+          "tokens": [
+            50395,
+            101,
+            50420
+          ]
+        }
+      ],
+      "next_seek": 4200,
+      "single_timestamp_ending": true
+    },
+    {
+      "name": "short_segment_trailing",
+      "tokens": [
+        50367,
+        100,
+        101,
+        50390,
+        50390,
+        102
+      ],
+      "seek": 3000,
+      "time_offset": 30.0,
+      "segment_size": 1200,
+      "segment_duration": 12.0,
+      "segments": [
+        {
+          "start": 30.04,
+          "end": 30.5,
+          "tokens": [
+            50367,
+            100,
+            101,
+            50390
+          ]
+        }
+      ],
+      "next_seek": 3050,
+      "single_timestamp_ending": false
+    }
+  ],
+  "compression": [
+    {
+      "text": "hello hello hello hello",
+      "ratio": 1.4375
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ratio": 8.333333333333334
+    },
+    {
+      "text": "The quick brown fox jumps over the lazy dog.",
+      "ratio": 0.8627450980392157
+    },
+    {
+      "text": "Bugün hava çok güzel, dışarı çıkalım.",
+      "ratio": 0.8679245283018868
+    },
+    {
+      "text": "",
+      "ratio": 0.0
+    }
+  ]
+}

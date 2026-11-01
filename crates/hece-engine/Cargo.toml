@@ -9,7 +9,31 @@ repository.workspace = true
 publish.workspace = true
 
 [features]
-cuda = []
+cuda = ["dep:ct2rs"]
+cuda-dynamic = ["cuda", "ct2rs/cuda-dynamic-loading"]
 
 [lints]
 workspace = true
+
+[dependencies]
+hece-core = { path = "../hece-core" }
+thiserror.workspace = true
+rustfft.workspace = true
+flate2.workspace = true
+# Pins the bundled zlib so compression ratios match CPython regardless of the system zlib.
+libz-sys.workspace = true
+tokenizers.workspace = true
+ort.workspace = true
+ct2rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true
+hound.workspace = true
+
+[[example]]
+name = "transcribe_dir"
+required-features = ["cuda"]
+
+[[test]]
+name = "engine_real"
+required-features = ["cuda"]

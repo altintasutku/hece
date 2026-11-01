@@ -27,7 +27,8 @@ cargo test --workspace
 ```
 
 - Run the daemon/CLI: `cargo run -p hece`
-- Engine with CUDA: `CUDA_ARCH_LIST="8.9;12.0" cargo build -p hece-engine --features cuda`
+- Engine with CUDA: `CUDA_ARCH_LIST="8.9;12.0" CMAKE_BUILD_PARALLEL_LEVEL=4 CARGO_BUILD_JOBS=4 cargo build -p hece-engine --features cuda-dynamic`
+  (never two CUDA builds at once; details in `crates/hece-engine/README.md`)
 - Never use `--all-features`; `cuda` needs a CUDA toolchain and CI does not have one.
 
 ## Rules

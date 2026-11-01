@@ -1,0 +1,14 @@
+# Test fixtures
+
+All fixtures are synthetic (generated tones and noise).
+
+| File | Generator | Description |
+| --- | --- | --- |
+| `mel_audio.i16` | `gen_mel.py` | 1.5 s of 16 kHz mono PCM, little-endian i16 |
+| `mel_expected.f32` | `gen_mel.py` | faster-whisper log-mel of that audio, 128 x frames, row-major little-endian f32 |
+| `vad_timestamps.json` | `gen_vad.py` | Seeded probability sequences, VAD options and faster-whisper's `get_speech_timestamps` output |
+| `vad_probs.json` | `gen_vad.py` | A 3 s synthetic i16 signal and faster-whisper's Silero probabilities for it |
+| `tokens_expected.json` | `gen_tokens.py` | Public Whisper large-v3 token ids: special tokens, suppress list, encoding of a sample sentence (used by the ignored `tokens_real` test) |
+| `split_expected.json` | `gen_split.py` | faster-whisper `_split_segments_by_timestamps` on synthetic token sequences, and `get_compression_ratio` of sample strings |
+
+Generator scripts require `faster-whisper==1.2.1`.

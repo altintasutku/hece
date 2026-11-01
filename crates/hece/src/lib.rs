@@ -83,8 +83,17 @@ fn load_config(path: Option<std::path::PathBuf>) -> anyhow::Result<Config> {
 async fn daemon(config: Option<std::path::PathBuf>) -> anyhow::Result<()> {
     let state = paths::state_dir()?;
     logging::init(&state);
-    let cfg = load_config(config)?;
-    run::execute(cfg, &state, &paths::control_socket()?).await
+    let config_file = match config {
+        Some(path) => path,
+        None => paths::config_file()?,
+    };
+    let cfg = load_config(Some(config_file.clone()))?;
+    let paths = run::Paths {
+        config_file,
+        state_dir: state,
+        control: paths::control_socket()?,
+    };
+    run::execute(cfg, paths).await
 }
 
 fn history(args: &HistoryArgs) -> anyhow::Result<()> {

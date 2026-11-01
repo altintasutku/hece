@@ -7,9 +7,9 @@ mod windows;
 
 #[cfg(windows)]
 pub use windows::{
-    CANCEL_SHORTCUT, ControlListener, ControlRequest, Hotkeys, Inserted, RECORD_SHORTCUT, Window,
+    CANCEL_SHORTCUT, ControlListener, ControlRequest, Desktop, Inserted, RECORD_SHORTCUT, Window,
     autostart_enabled, control_request, copy, disable_autostart, enable_autostart, focused_window,
-    insert, notify,
+    insert, notify, open,
 };
 
 /// Which global shortcut fired.
@@ -54,6 +54,9 @@ pub enum PlatformError {
     /// Autostart could not be changed.
     #[error("autostart could not be changed")]
     Autostart,
+    /// A file or folder could not be opened.
+    #[error("could not open the file")]
+    Open,
     /// The paste keystroke could not be sent.
     #[error("the paste keystroke could not be sent")]
     Paste,
@@ -68,10 +71,52 @@ impl PlatformError {
             Self::Hotkey => "hotkey_failed",
             Self::Clipboard => "clipboard_failed",
             Self::Paste => "paste_failed",
+            Self::Open => "open_failed",
             Self::Control => "control_failed",
             Self::AlreadyRunning => "already_running",
             Self::NotRunning => "not_running",
             Self::Autostart => "autostart_failed",
         }
     }
+}
+
+/// What the tray icon shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayState {
+    /// Ready.
+    Idle = 0,
+    /// The microphone is recording.
+    Recording = 1,
+    /// A dictation is being transcribed.
+    Processing = 2,
+    /// The last dictation may be misheard.
+    Warning = 3,
+    /// Something failed (details in the notification).
+    Error = 4,
+}
+
+/// A tray menu entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuAction {
+    /// Start or stop a recording.
+    Toggle,
+    /// Paste the last dictation again.
+    Repaste,
+    /// Paste the last raw transcript.
+    RepasteRaw,
+    /// Open the settings.
+    Settings,
+    /// Open the log folder.
+    Logs,
+    /// Quit the daemon.
+    Quit,
+}
+
+/// Input from the desktop thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DesktopEvent {
+    /// A shortcut went down or up.
+    Hotkey(HotkeyEvent),
+    /// A tray menu entry was chosen.
+    Menu(MenuAction),
 }

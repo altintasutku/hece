@@ -62,3 +62,13 @@ pub fn disable_autostart() -> Result<(), PlatformError> {
 pub fn autostart_enabled() -> Result<bool, PlatformError> {
     reg(&["query", RUN_KEY, "/v", RUN_VALUE])
 }
+
+/// Opens `path` with its default application (a folder in Explorer, a file in its editor).
+pub fn open(path: &Path) -> Result<(), PlatformError> {
+    Command::new("explorer.exe")
+        .arg(path)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map(drop)
+        .map_err(|_| PlatformError::Open)
+}

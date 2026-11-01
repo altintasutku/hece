@@ -11,6 +11,9 @@ publish.workspace = true
 [features]
 cuda = ["dep:ct2rs"]
 cuda-dynamic = ["cuda", "ct2rs/cuda-dynamic-loading"]
+# Windows CUDA builds: CTranslate2 forces the static CRT (/MT) while the prebuilt onnxruntime uses
+# /MD, so onnxruntime.dll is loaded at run time instead (next to the exe, else System32).
+ort-dynamic = ["ort/load-dynamic"]
 
 [lints]
 workspace = true

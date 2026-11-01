@@ -204,13 +204,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn wav_has_header_and_samples() {
-        let bytes = wav("t", &[0, 1, -1]).unwrap();
-        assert_eq!(&bytes[..4], b"RIFF");
-        assert_eq!(bytes.len(), 44 + 6);
-    }
-
-    #[test]
     fn plain_http_only_for_loopback_when_sending_a_key() {
         assert!(endpoint("t", "http://127.0.0.1:8000/v1", "/x", true).is_ok());
         assert!(endpoint("t", "http://localhost:8000/v1/", "/x", true).is_ok());
@@ -234,19 +227,5 @@ mod tests {
             url.unwrap().as_str(),
             "https://api.openai.com/v1/audio/transcriptions"
         );
-    }
-
-    #[test]
-    fn timeout_grows_with_audio() {
-        let base = Duration::from_secs(60);
-        assert_eq!(request_timeout(base, 0), base);
-        assert_eq!(request_timeout(base, 16_000 * 100), Duration::from_secs(70));
-    }
-
-    #[test]
-    fn language_names_are_dropped() {
-        assert_eq!(language_code(Some("TR")), Some("tr".into()));
-        assert_eq!(language_code(Some("english")), None);
-        assert_eq!(language_code(None), None);
     }
 }

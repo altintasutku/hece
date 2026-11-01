@@ -27,6 +27,10 @@ pub enum Command {
     /// yok, hayır, asla, hiç…, not, never, n't…); Turkish verb negation (-me/-ma) is not
     /// detected.
     Bench(BenchArgs),
+    /// List microphones (names usable with `--device`).
+    Devices,
+    /// Record once from the microphone (Enter stops), transcribe and print the text.
+    Dictate(DictateArgs),
 }
 
 /// Arguments of `hece bench`.
@@ -60,6 +64,41 @@ pub struct BenchArgs {
     pub short: Option<PathBuf>,
 }
 
+/// Arguments of `hece dictate`. Without `--api-base` the local engine is used.
+#[derive(Debug, Args)]
+pub struct DictateArgs {
+    /// Microphone name from `hece devices` (default: the system default).
+    #[arg(long)]
+    pub device: Option<String>,
+    /// Spoken language code (default: auto-detect).
+    #[arg(long)]
+    pub language: Option<String>,
+    /// Vocabulary file (one term per line).
+    #[arg(long)]
+    pub vocab: Option<PathBuf>,
+    /// Recording limit in seconds.
+    #[arg(long, default_value_t = 600)]
+    pub max_secs: u64,
+    /// `CTranslate2` model directory for the local engine.
+    #[arg(long, conflicts_with = "api_base")]
+    pub model: Option<PathBuf>,
+    /// Path of the `hece-engine` binary (default: next to this binary, then `PATH`).
+    #[arg(long)]
+    pub engine: Option<PathBuf>,
+    /// Base URL of an OpenAI-compatible API, e.g. `https://api.openai.com/v1`.
+    #[arg(long)]
+    pub api_base: Option<String>,
+    /// Model name for `--api-base`.
+    #[arg(long, default_value = "whisper-1", requires = "api_base")]
+    pub api_model: String,
+    /// Env var holding the API key (none: no authentication, e.g. a local server).
+    #[arg(long, requires = "api_base")]
+    pub key_env: Option<String>,
+    /// Ask the API for segments (`verbose_json`; Whisper models only).
+    #[arg(long, requires = "api_base")]
+    pub segments: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,7 +110,9 @@ mod tests {
             "hece", "bench", "dir", "--model", "m", "--long", "--short", "s",
         ])
         .unwrap();
-        let Command::Bench(args) = cli.command;
+        let Command::Bench(args) = cli.command else {
+            panic!("expected bench");
+        };
         assert!(args.long);
         assert_eq!(args.short.as_deref(), Some(std::path::Path::new("s")));
         assert_eq!(args.prompt_tokens, 200);

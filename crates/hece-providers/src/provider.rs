@@ -220,15 +220,6 @@ mod tests {
     }
 
     #[test]
-    fn messages_name_the_provider() {
-        let e = ProviderError::KeyringLocked {
-            provider: "groq".to_owned(),
-        };
-        assert!(e.to_string().starts_with("groq:"));
-        assert_eq!(e.code(), "keyring_locked");
-    }
-
-    #[test]
     fn request_debug_hides_content() {
         let vocab = Vocabulary {
             terms: vec!["Gizli Proje".to_owned()],

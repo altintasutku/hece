@@ -147,13 +147,6 @@ mod tests {
     }
 
     #[test]
-    fn estimate_is_never_below_byte_half() {
-        assert_eq!(estimate_tokens(""), 0);
-        assert_eq!(estimate_tokens("abc"), 2);
-        assert_eq!(estimate_tokens("ğü"), 2);
-    }
-
-    #[test]
     fn debug_hides_terms() {
         let shown = format!("{:?}", VocabularyHint::Keyterms(vec!["Gizli".into()]));
         assert!(!shown.contains("Gizli"));

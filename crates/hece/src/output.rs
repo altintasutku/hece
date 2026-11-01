@@ -66,6 +66,11 @@ pub fn line(text: &str) {
     }
 }
 
+/// Prints a progress line to stderr, keeping stdout for results.
+pub fn status(text: &str) {
+    eprintln!("{text}");
+}
+
 /// Prints an error line to stderr.
 pub fn error(text: &str) {
     eprintln!("error: {text}");

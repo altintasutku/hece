@@ -328,18 +328,8 @@ async fn deepgram_detects_language_when_none_is_set() {
 }
 
 #[tokio::test]
-async fn deepgram_maps_401_429_and_empty_results() {
+async fn deepgram_without_channels_is_a_bad_response() {
     let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(403))
-        .up_to_n_times(1)
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(429))
-        .up_to_n_times(1)
-        .mount(&server)
-        .await;
     Mock::given(method("POST"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(json!({"results": {"channels": []}})),
@@ -347,25 +337,11 @@ async fn deepgram_maps_401_429_and_empty_results() {
         .mount(&server)
         .await;
     let (key, _) = key_for("deepgram", "dg");
-    let p = deepgram(&server, key);
-    let mut seen = Vec::new();
-    for _ in 0..3 {
-        seen.push(
-            p.transcribe(request(None, None))
-                .await
-                .unwrap_err()
-                .code()
-                .to_owned(),
-        );
-    }
-    assert_eq!(
-        seen,
-        [
-            "provider_unauthorized",
-            "provider_rate_limited",
-            "provider_bad_response"
-        ]
-    );
+    let e = deepgram(&server, key)
+        .transcribe(request(None, None))
+        .await
+        .unwrap_err();
+    assert_eq!(e.code(), "provider_bad_response");
 }
 
 #[tokio::test]

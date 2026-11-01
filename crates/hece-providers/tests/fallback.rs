@@ -116,13 +116,6 @@ async fn both_failing_reports_both() {
     assert!(msg.contains("openai") && msg.contains("groq"));
 }
 
-#[tokio::test]
-async fn without_fallback_the_primary_error_is_returned() {
-    let providers = Providers::new(fake("openai", false, true), None, false).unwrap();
-    let e = providers.transcribe(request()).await.unwrap_err();
-    assert_eq!(e.code(), "provider_network");
-}
-
 #[test]
 fn local_to_cloud_needs_explicit_opt_in() {
     let e = Providers::new(

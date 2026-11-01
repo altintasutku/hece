@@ -8,6 +8,8 @@ pub mod decode;
 pub mod engine;
 pub mod error;
 pub mod mel;
+pub mod server;
+pub mod socket;
 pub mod tokens;
 pub mod vad;
 

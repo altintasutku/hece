@@ -44,6 +44,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 regex = "1.13.1"
 unicode-normalization = "0.1.26"
 serde_json = "1.0.154"
+base64 = "0.23.1"
 thiserror = "2.0.21"
 rustfft = "6.4.1"
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib"] }
@@ -53,3 +54,6 @@ ort = "=2.0.0-rc.15"
 # Never enable the `whisper`/`sentencepiece` features: their protobuf clashes with ort at link time.
 ct2rs = { version = "0.10.2", default-features = false, features = ["cuda", "cuda-small-binary", "ruy"] }
 hound = "3.5.1"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "env-filter", "ansi"] }
+tokio = { version = "1.54.1", features = ["net", "process", "time", "io-util", "sync", "macros", "rt-multi-thread"] }

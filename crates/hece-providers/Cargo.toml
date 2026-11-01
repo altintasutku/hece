@@ -10,3 +10,11 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+hece-core = { path = "../hece-core" }
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]

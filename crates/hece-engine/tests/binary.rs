@@ -1,4 +1,4 @@
-//! The worker binary is a placeholder until the IPC server lands: it explains why it cannot run
+//! Without the `cuda` feature the worker binary explains why it cannot run
 //! and exits with code 2.
 
 use std::process::Command;

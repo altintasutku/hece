@@ -60,6 +60,36 @@ pub enum ComputeKind {
     Float32,
 }
 
+/// An unrecognised compute type name.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown compute type")]
+pub struct ParseComputeError;
+
+impl std::str::FromStr for ComputeKind {
+    type Err = ParseComputeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "int8_float16" => Ok(Self::Int8Float16),
+            "float16" => Ok(Self::Float16),
+            "int8" => Ok(Self::Int8),
+            "float32" => Ok(Self::Float32),
+            _ => Err(ParseComputeError),
+        }
+    }
+}
+
+impl std::fmt::Display for ComputeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Int8Float16 => "int8_float16",
+            Self::Float16 => "float16",
+            Self::Int8 => "int8",
+            Self::Float32 => "float32",
+        })
+    }
+}
+
 /// Audio ready for decoding: its log-mel and, when VAD ran, the map back to original times.
 #[derive(Debug)]
 pub(crate) struct Prepared {
@@ -188,6 +218,19 @@ fn restore(map: Option<&SpeechTimestampsMap>, t: f64, is_end: bool) -> f64 {
 mod tests {
     use super::*;
     use crate::decode::{GenerateRequest, GenerateResult};
+
+    #[test]
+    fn compute_kind_roundtrips_through_text() {
+        for kind in [
+            ComputeKind::Int8Float16,
+            ComputeKind::Float16,
+            ComputeKind::Int8,
+            ComputeKind::Float32,
+        ] {
+            assert_eq!(kind.to_string().parse::<ComputeKind>(), Ok(kind));
+        }
+        assert_eq!("bf16".parse::<ComputeKind>(), Err(ParseComputeError));
+    }
 
     const EOT: u32 = 50_257;
     const TB: u32 = 50_365;

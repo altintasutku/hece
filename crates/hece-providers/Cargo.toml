@@ -16,5 +16,11 @@ hece-core = { path = "../hece-core" }
 tokio.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hound.workspace = true
+reqwest.workspace = true
+keyring.workspace = true
 
 [dev-dependencies]
+wiremock.workspace = true

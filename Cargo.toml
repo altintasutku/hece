@@ -63,3 +63,8 @@ clap = { version = "4.6.7", features = ["derive"] }
 # Windows only: named pipes for the engine worker IPC.
 interprocess = { version = "2.4.7", features = ["tokio"] }
 widestring = "1.2.1"
+# Cloud STT adapters.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "multipart"] }
+# OS credential store: Credential Manager, Keychain, Secret Service.
+keyring = "4.2.0"
+wiremock = "0.6.5"

@@ -1,0 +1,39 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+repository = "https://github.com/altintasutku/hece"
+version = "0.1.0"
+publish = false
+
+[workspace.lints.rust]
+# FFI wrapper modules may `#[allow(unsafe_code, reason = "...")]` with a justifying reason.
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+print_stderr = "warn"
+print_stdout = "warn"
+allow_attributes_without_reason = "warn"
+undocumented_unsafe_blocks = "warn"
+# Opt-outs from pedantic:
+# Crate-prefixed type names (e.g. engine::EngineError) read better at call sites.
+module_name_repetitions = "allow"
+# Error variants are self-documenting via thiserror messages; per-fn "# Errors" sections add noise.
+missing_errors_doc = "allow"
+# Panics are forbidden outside tests (unwrap/expect lints), so "# Panics" sections would be empty.
+missing_panics_doc = "allow"
+
+[profile.release]
+lto = "thin"
+strip = true

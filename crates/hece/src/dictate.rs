@@ -18,6 +18,10 @@ use crate::output;
 /// The configured provider, plus the engine client when it is the local one (for prewarm).
 pub struct Setup {
     pub provider: Arc<dyn Provider>,
+    #[cfg_attr(
+        not(windows),
+        expect(dead_code, reason = "read by hece run, which is Windows-only")
+    )]
     pub engine: Option<Arc<EngineClient>>,
     pub vocabulary: Option<Vocabulary>,
 }

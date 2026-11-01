@@ -100,6 +100,12 @@ fn send_paste() -> Result<(), PlatformError> {
     }
 }
 
+/// Puts `text` on the clipboard (kept out of history and the cloud clipboard) without pasting.
+pub fn copy(text: &str) -> Result<(), PlatformError> {
+    let mut clipboard = Clipboard::new().map_err(|_| PlatformError::Clipboard)?;
+    set_private(&mut clipboard, text)
+}
+
 /// Pastes `text` into `target` (or wherever focus is when `target` is `None`). Blocks for up
 /// to a few seconds; call it from a blocking context.
 ///

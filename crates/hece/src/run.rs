@@ -15,7 +15,7 @@ use hece_platform::{
     CANCEL_SHORTCUT, ControlListener, ControlRequest, Desktop, DesktopEvent, HotkeyEvent, Inserted,
     MenuAction, RECORD_SHORTCUT, Shortcut, TrayState, Window,
 };
-use hece_providers::{Outcome, ProviderError, ProviderRequest, Providers};
+use hece_providers::{Cleaner, FallbackNotice, ProviderError, ProviderRequest, Providers};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
@@ -36,8 +36,24 @@ enum Msg {
     Control(ControlRequest),
     Capture(RecordingId, CaptureEvent),
     Captured(RecordingId, Result<Recording, AudioError>),
-    Transcribed(RecordingId, Result<Outcome, ProviderError>),
+    Transcribed(RecordingId, Result<Dictation, ProviderError>),
     RefreshTray,
+}
+
+/// A transcribed dictation after the quality layers and the optional cleanup.
+struct Dictation {
+    transcript: Transcript,
+    /// Text after an accepted cleanup.
+    cleaned: Option<String>,
+    /// Why the cleanup was skipped (the raw text is inserted).
+    cleanup_skipped: Option<String>,
+    fell_back: Option<FallbackNotice>,
+}
+
+impl Dictation {
+    fn text(&self) -> &str {
+        self.cleaned.as_deref().unwrap_or(&self.transcript.text)
+    }
 }
 
 type Tx = mpsc::UnboundedSender<Msg>;
@@ -82,6 +98,7 @@ async fn capture(id: RecordingId, cfg: CaptureConfig, tx: Tx, command: oneshot::
 
 struct Daemon {
     providers: Arc<Providers>,
+    cleaner: Option<Arc<Cleaner>>,
     vocabulary: Option<Arc<Vocabulary>>,
     language: Option<String>,
     prompt_tokens: usize,
@@ -99,7 +116,7 @@ struct Daemon {
     audio: HashMap<RecordingId, Vec<i16>>,
     targets: HashMap<RecordingId, Option<Window>>,
     tasks: HashMap<RecordingId, JoinHandle<()>>,
-    results: HashMap<RecordingId, Transcript>,
+    results: HashMap<RecordingId, Dictation>,
     failures: HashMap<RecordingId, String>,
     /// A warning/error colour shown on the tray until the given time.
     flag: Option<(TrayState, Instant)>,
@@ -283,10 +300,10 @@ impl Daemon {
         }
     }
 
-    fn transcribed(&mut self, id: RecordingId, result: Result<Outcome, ProviderError>) -> bool {
+    fn transcribed(&mut self, id: RecordingId, result: Result<Dictation, ProviderError>) -> bool {
         match result {
-            Ok(outcome) => {
-                if let Some(notice) = &outcome.fell_back {
+            Ok(dictation) => {
+                if let Some(notice) = &dictation.fell_back {
                     tracing::warn!(from = %notice.from, to = %notice.to, reason = %notice.reason, "fell back");
                     self.alert(
                         TrayState::Warning,
@@ -296,12 +313,11 @@ impl Daemon {
                         ),
                     );
                 }
-                let t = outcome.transcript.with_quality_layers();
-                if t.text.is_empty() {
+                if dictation.transcript.text.is_empty() {
                     self.failures.insert(id, "Nothing heard.".to_owned());
                     false
                 } else {
-                    self.results.insert(id, t);
+                    self.results.insert(id, dictation);
                     true
                 }
             }
@@ -372,6 +388,7 @@ impl Daemon {
         let vocabulary = self.vocabulary.clone();
         let language = self.language.clone();
         let prompt_tokens = self.prompt_tokens;
+        let llm = self.cleaner.clone();
         let tx = self.tx.clone();
         let task = tokio::spawn(async move {
             let req = ProviderRequest {
@@ -381,7 +398,29 @@ impl Daemon {
                 prompt_prefix: hece_core::DEFAULT_PROMPT_PREFIX,
                 prompt_tokens,
             };
-            let result = providers.transcribe(req).await;
+            let result = match providers.transcribe(req).await {
+                Ok(outcome) => {
+                    let transcript = outcome.transcript.with_quality_layers();
+                    let cleanup = match &llm {
+                        Some(llm) if !transcript.text.is_empty() => {
+                            Some(llm.guarded(&transcript.text).await)
+                        }
+                        _ => None,
+                    };
+                    let (cleaned, cleanup_skipped) = match cleanup {
+                        Some(c) if c.skipped.is_none() => (Some(c.text), None),
+                        Some(c) => (None, c.skipped),
+                        None => (None, None),
+                    };
+                    Ok(Dictation {
+                        transcript,
+                        cleaned,
+                        cleanup_skipped,
+                        fell_back: outcome.fell_back,
+                    })
+                }
+                Err(e) => Err(e),
+            };
             let _ = tx.send(Msg::Transcribed(id, result));
         });
         self.tasks.insert(id, task);
@@ -389,16 +428,16 @@ impl Daemon {
 
     async fn insert(&mut self, id: RecordingId) {
         let target = self.targets.remove(&id).flatten();
-        let Some(transcript) = self.results.remove(&id) else {
+        let Some(dictation) = self.results.remove(&id) else {
             return;
         };
         if let Some(history) = self.history.clone() {
             let entry = Entry {
                 time: history::now(),
-                raw: transcript.text.clone(),
-                cleaned: None,
-                provider: transcript.provider.clone(),
-                low_confidence: transcript.low_confidence,
+                raw: dictation.transcript.text.clone(),
+                cleaned: dictation.cleaned.clone(),
+                provider: dictation.transcript.provider.clone(),
+                low_confidence: dictation.transcript.low_confidence,
             };
             tokio::task::spawn_blocking(move || {
                 if let Err(e) = history.append(entry) {
@@ -406,9 +445,15 @@ impl Daemon {
                 }
             });
         }
-        let chars = transcript.text.chars().count();
-        let low = transcript.low_confidence;
-        let text = transcript.text;
+        if let Some(code) = &dictation.cleanup_skipped {
+            self.alert(
+                TrayState::Warning,
+                &format!("Cleanup skipped ({code}); inserted the raw transcript."),
+            );
+        }
+        let text = dictation.text().to_owned();
+        let chars = text.chars().count();
+        let low = dictation.transcript.low_confidence;
         let result =
             tokio::task::spawn_blocking(move || hece_platform::insert(&text, target)).await;
         match result {
@@ -476,6 +521,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
     tracing::info!(mode = how, "daemon ready");
     let mut daemon = Daemon {
         providers: Arc::new(setup.providers),
+        cleaner: setup.cleaner,
         vocabulary: setup.vocabulary,
         language: setup.language,
         prompt_tokens: setup.prompt_tokens,

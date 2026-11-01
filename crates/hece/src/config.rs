@@ -41,6 +41,14 @@ model_dir = 'C:\path\to\large-v3-turkish-ec03ccf'      # scripts/prepare_model.p
 # kind = "deepgram"
 # key = "keyring"
 
+# Optional LLM cleanup (fillers, punctuation, repeats; guarded so meaning never changes):
+# [cleanup]
+# kind = "anthropic"       # anthropic | openai (OpenAI, OpenRouter, Ollama, llama.cpp server)
+# model = "claude-opus-5-5"
+# key = "keyring"          # `hece key set anthropic`
+# base_url = "http://127.0.0.1:11434/v1"   # openai kind only
+# timeout_seconds = 10
+
 [history]
 enabled = true
 max_entries = 50
@@ -55,6 +63,7 @@ pub struct Config {
     pub transcription: Transcription,
     pub provider: ProviderConfig,
     pub fallback: Option<ProviderConfig>,
+    pub cleanup: Option<CleanupSection>,
     pub history: HistoryConfig,
 }
 
@@ -195,6 +204,73 @@ impl ProviderConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CleanupKind {
+    #[default]
+    Anthropic,
+    Openai,
+}
+
+/// `[cleanup]`: present means enabled.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct CleanupSection {
+    pub kind: CleanupKind,
+    pub name: Option<String>,
+    pub base_url: Option<String>,
+    pub model: Option<String>,
+    pub key: Option<String>,
+    pub timeout_seconds: u64,
+}
+
+impl Default for CleanupSection {
+    fn default() -> Self {
+        Self {
+            kind: CleanupKind::Anthropic,
+            name: None,
+            base_url: None,
+            model: None,
+            key: None,
+            timeout_seconds: 10,
+        }
+    }
+}
+
+impl CleanupSection {
+    /// Display name and keyring account.
+    pub fn name(&self) -> String {
+        self.name.clone().unwrap_or_else(|| {
+            match self.kind {
+                CleanupKind::Anthropic => "anthropic",
+                CleanupKind::Openai => "cleanup",
+            }
+            .to_owned()
+        })
+    }
+
+    /// The key source, parsed like `[provider] key`.
+    pub fn key_ref(&self) -> Result<KeyRef, String> {
+        ProviderConfig {
+            key: self.key.clone(),
+            ..ProviderConfig::default()
+        }
+        .key_ref()
+        .map_err(|e| format!("[cleanup] {e}"))
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        self.key_ref()?;
+        if !(1..=120).contains(&self.timeout_seconds) {
+            return Err("[cleanup] timeout_seconds must be 1..=120".to_owned());
+        }
+        if self.kind == CleanupKind::Openai && (self.base_url.is_none() || self.model.is_none()) {
+            return Err("[cleanup] kind = \"openai\" needs base_url and model".to_owned());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct HistoryConfig {
@@ -249,6 +325,9 @@ impl Config {
             return Err("[history] max_entries must be at least 1 (or enabled = false)".to_owned());
         }
         self.provider.validate("provider")?;
+        if let Some(cleanup) = &self.cleanup {
+            cleanup.validate()?;
+        }
         if let Some(fallback) = &self.fallback {
             fallback.validate("fallback")?;
         }

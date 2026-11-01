@@ -31,9 +31,39 @@ pub enum Command {
     Devices,
     /// Record once from the microphone (Enter stops), transcribe and print the text.
     Dictate(DictateArgs),
-    /// Dictate into any window: Ctrl+Shift+Space records, Ctrl+Shift+Backspace cancels.
+    /// Run the dictation daemon (Ctrl+Shift+Space records, Ctrl+Shift+Backspace cancels).
+    ///
+    /// Settings come from the config file; a commented template is written on first run.
+    /// `hecew.exe` (no arguments) runs the same daemon without a console window.
     #[cfg(windows)]
     Run(RunArgs),
+    /// Show what the running daemon is doing (idle, recording, processing N).
+    #[cfg(windows)]
+    Status,
+    /// Start or stop a recording in the running daemon.
+    #[cfg(windows)]
+    Toggle,
+    /// Show recent dictations.
+    History(HistoryArgs),
+    /// Copy the last dictation to the clipboard (kept out of clipboard history).
+    #[cfg(windows)]
+    Repaste {
+        /// The raw transcript instead of the cleaned text.
+        #[arg(long)]
+        raw: bool,
+    },
+    /// Manage API keys in the OS keyring.
+    #[command(subcommand)]
+    Key(KeyCommand),
+    /// Start hece at login.
+    #[cfg(windows)]
+    Autostart {
+        /// on, off or status.
+        #[arg(value_enum)]
+        action: Toggle,
+    },
+    /// Print the config file path (creating the template if missing).
+    Config,
 }
 
 /// Arguments of `hece bench`.
@@ -111,30 +141,49 @@ pub struct DictateArgs {
     pub provider: ProviderArgs,
 }
 
-/// How the record shortcut works.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum ModeArg {
-    /// Hold to talk, release to stop.
-    Hold,
-    /// Press to start, press again to stop.
-    Toggle,
-}
-
 /// Arguments of `hece run`.
 #[derive(Debug, Args)]
 pub struct RunArgs {
-    /// Microphone name from `hece devices` (default: the system default).
+    /// Config file (default: `%APPDATA%\hece\config.toml`).
     #[arg(long)]
-    pub device: Option<String>,
-    /// Recording limit in seconds.
-    #[arg(long, default_value_t = 600)]
-    pub max_secs: u64,
-    /// How Ctrl+Shift+Space works.
-    #[arg(long, value_enum, default_value_t = ModeArg::Hold)]
-    pub mode: ModeArg,
-    /// Transcription provider.
-    #[command(flatten)]
-    pub provider: ProviderArgs,
+    pub config: Option<PathBuf>,
+}
+
+/// Arguments of `hece history`.
+#[derive(Debug, Args)]
+pub struct HistoryArgs {
+    /// How many recent entries to show.
+    #[arg(long, short = 'n', default_value_t = 10)]
+    pub count: usize,
+    /// Delete the history.
+    #[arg(long, conflicts_with = "count")]
+    pub clear: bool,
+}
+
+/// What to do with a provider's API key.
+#[derive(Debug, Subcommand)]
+pub enum KeyCommand {
+    /// Store a key in the OS keyring (typed without echo).
+    Set {
+        /// Provider name (`name` in the config, or its kind).
+        provider: String,
+    },
+    /// Remove a key from the OS keyring.
+    Delete {
+        /// Provider name.
+        provider: String,
+    },
+}
+
+/// Autostart at login.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Toggle {
+    /// Start hecew.exe at login.
+    On,
+    /// Do not start at login.
+    Off,
+    /// Show whether it is on.
+    Status,
 }
 
 #[cfg(test)]

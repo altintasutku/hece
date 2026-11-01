@@ -1,8 +1,10 @@
-//! `hece run`: dictation into any window. Hotkey and capture events feed the recording state
-//! machine; its actions start and stop captures, run transcriptions and paste the results in
-//! recording order. Status lines never contain transcript text.
+//! The daemon: dictation into any window. Hotkey, control-pipe and capture events feed the
+//! recording state machine; its actions start and stop captures, run transcriptions and paste
+//! the results in recording order. Every failure is reported as a toast. Status lines,
+//! notifications and logs never contain transcript text.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,27 +12,37 @@ use hece_audio::{AudioError, Capture, CaptureConfig, CaptureEvent, Recording};
 use hece_core::recorder::{Action, Input, Mode, Recorder, RecordingId};
 use hece_core::{Transcript, Vocabulary};
 use hece_platform::{
-    CANCEL_SHORTCUT, HotkeyEvent, Hotkeys, Inserted, RECORD_SHORTCUT, Shortcut, Window,
+    CANCEL_SHORTCUT, ControlListener, ControlRequest, HotkeyEvent, Hotkeys, Inserted,
+    RECORD_SHORTCUT, Shortcut, Window,
 };
-use hece_providers::{Provider, ProviderError, ProviderRequest};
+use hece_providers::{Outcome, ProviderError, ProviderRequest, Providers};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
-use crate::cli::{ModeArg, RunArgs};
-use crate::dictate::setup;
+use crate::config::{Config, RecordMode};
+use crate::history::{self, Entry, History};
 use crate::output;
+use crate::providers::setup;
 
 /// Recordings shorter than this (0.3 s at 16 kHz) count as "nothing heard".
 const MIN_SAMPLES: usize = 4_800;
 
 enum Msg {
     Hotkey(HotkeyEvent),
+    Control(ControlRequest),
     Capture(RecordingId, CaptureEvent),
     Captured(RecordingId, Result<Recording, AudioError>),
-    Transcribed(RecordingId, Result<Transcript, ProviderError>),
+    Transcribed(RecordingId, Result<Outcome, ProviderError>),
 }
 
 type Tx = mpsc::UnboundedSender<Msg>;
+
+/// Prints `message` and shows it as a toast (failures and warnings).
+fn alert(message: &str) {
+    output::status(message);
+    let message = message.to_owned();
+    tokio::task::spawn_blocking(move || hece_platform::notify("Hece", &message));
+}
 
 /// Owns one capture: opens the microphone, then stops (`true`) or discards (`false`) it on
 /// command and reports the recording.
@@ -64,10 +76,13 @@ async fn capture(id: RecordingId, cfg: CaptureConfig, tx: Tx, command: oneshot::
 }
 
 struct Daemon {
-    provider: Arc<dyn Provider>,
+    providers: Arc<Providers>,
     vocabulary: Option<Arc<Vocabulary>>,
     language: Option<String>,
+    prompt_tokens: usize,
+    mode: Mode,
     capture_cfg: CaptureConfig,
+    history: Option<History>,
     tx: Tx,
     recorder: Recorder,
     /// The recording in progress; capture events of older ones are ignored.
@@ -81,25 +96,64 @@ struct Daemon {
 }
 
 impl Daemon {
-    fn input(&mut self, msg: Msg) -> Option<Input> {
+    fn status(&self) -> String {
+        let pending = self.tasks.len() + self.results.len();
+        match (self.recorder.is_recording(), pending) {
+            (true, _) => "recording".to_owned(),
+            (false, 0) => "idle".to_owned(),
+            (false, n) => format!("processing {n}"),
+        }
+    }
+
+    /// Start/stop regardless of the hotkey mode.
+    fn toggle(&self) -> Input {
+        match (self.recorder.is_recording(), self.mode) {
+            (true, Mode::PushToTalk) => Input::Release,
+            _ => Input::Press,
+        }
+    }
+
+    async fn control(&self, request: ControlRequest) -> Option<Input> {
+        match request.command.as_str() {
+            "status" => {
+                let status = self.status();
+                request.reply(&status).await;
+                None
+            }
+            "toggle" => {
+                let input = self.toggle();
+                request.reply("ok").await;
+                Some(input)
+            }
+            "cancel" => {
+                request.reply("ok").await;
+                Some(Input::Cancel)
+            }
+            _ => {
+                request.reply("unknown command").await;
+                None
+            }
+        }
+    }
+
+    async fn input(&mut self, msg: Msg) -> Option<Input> {
         match msg {
             Msg::Hotkey(HotkeyEvent::Pressed(Shortcut::Record)) => Some(Input::Press),
             Msg::Hotkey(HotkeyEvent::Released(Shortcut::Record)) => Some(Input::Release),
             Msg::Hotkey(HotkeyEvent::Pressed(Shortcut::Cancel)) => Some(Input::Cancel),
+            Msg::Control(request) => self.control(request).await,
             Msg::Capture(id, event) if self.current == Some(id) => match event {
                 CaptureEvent::Live { latency } => {
-                    output::status(&format!(
-                        "● recording (mic live after {} ms)",
-                        latency.as_millis()
-                    ));
+                    tracing::info!(latency_ms = latency.as_millis(), "mic live");
+                    output::status("● recording");
                     None
                 }
                 CaptureEvent::LimitReached => {
-                    output::status("recording limit reached");
+                    alert("Recording limit reached; transcribing what was recorded.");
                     Some(Input::LimitReached)
                 }
                 CaptureEvent::StreamError { code } => {
-                    output::status(&format!("microphone error ({code}); stopping"));
+                    alert(&format!("Microphone error ({code}); stopping."));
                     Some(Input::LimitReached)
                 }
             },
@@ -110,7 +164,8 @@ impl Daemon {
                 Some(Input::Captured { id, samples })
             }
             Msg::Captured(id, Err(e)) => {
-                output::error(&format!("{e} ({})", e.code()));
+                tracing::warn!(code = e.code(), "capture failed");
+                alert(&format!("{e} ({})", e.code()));
                 if self.current == Some(id) {
                     // The microphone never opened: end the recording.
                     return Some(Input::Cancel);
@@ -119,21 +174,38 @@ impl Daemon {
             }
             Msg::Transcribed(id, result) => {
                 self.tasks.remove(&id);
-                let ok = match result.map(Transcript::with_quality_layers) {
-                    Ok(t) if t.text.is_empty() => {
-                        self.failures.insert(id, "nothing heard".to_owned());
-                        false
-                    }
-                    Ok(t) => {
-                        self.results.insert(id, t);
-                        true
-                    }
-                    Err(e) => {
-                        self.failures.insert(id, format!("{e} ({})", e.code()));
-                        false
-                    }
-                };
-                Some(Input::Transcribed { id, ok })
+                Some(Input::Transcribed {
+                    id,
+                    ok: self.transcribed(id, result),
+                })
+            }
+        }
+    }
+
+    fn transcribed(&mut self, id: RecordingId, result: Result<Outcome, ProviderError>) -> bool {
+        match result {
+            Ok(outcome) => {
+                if let Some(notice) = &outcome.fell_back {
+                    tracing::warn!(from = %notice.from, to = %notice.to, reason = %notice.reason, "fell back");
+                    alert(&format!(
+                        "{} failed ({}); {} transcribed this dictation.",
+                        notice.from, notice.reason, notice.to
+                    ));
+                }
+                let t = outcome.transcript.with_quality_layers();
+                if t.text.is_empty() {
+                    self.failures.insert(id, "Nothing heard.".to_owned());
+                    false
+                } else {
+                    self.results.insert(id, t);
+                    true
+                }
+            }
+            Err(e) => {
+                tracing::warn!(code = e.code(), "transcription failed");
+                self.failures
+                    .insert(id, format!("Not inserted: {e} ({})", e.code()));
+                false
             }
         }
     }
@@ -176,15 +248,14 @@ impl Daemon {
                 output::status("cancelled");
             }
             Action::Insert(id) => self.insert(id).await,
-            Action::Failed(id) => {
-                self.targets.remove(&id);
-                let why = self.failures.remove(&id).unwrap_or_default();
-                output::status(&format!("not inserted: {why}"));
-            }
-            Action::NothingHeard(id) => {
+            Action::Failed(id) | Action::NothingHeard(id) => {
                 self.audio.remove(&id);
                 self.targets.remove(&id);
-                output::status("nothing heard");
+                let why = self
+                    .failures
+                    .remove(&id)
+                    .unwrap_or_else(|| "Nothing heard.".to_owned());
+                alert(&why);
             }
         }
     }
@@ -193,9 +264,10 @@ impl Daemon {
         let Some(audio) = self.audio.remove(&id) else {
             return;
         };
-        let provider = Arc::clone(&self.provider);
+        let providers = Arc::clone(&self.providers);
         let vocabulary = self.vocabulary.clone();
         let language = self.language.clone();
+        let prompt_tokens = self.prompt_tokens;
         let tx = self.tx.clone();
         let task = tokio::spawn(async move {
             let req = ProviderRequest {
@@ -203,9 +275,9 @@ impl Daemon {
                 language: language.as_deref(),
                 vocabulary: vocabulary.as_deref(),
                 prompt_prefix: hece_core::DEFAULT_PROMPT_PREFIX,
-                prompt_tokens: hece_core::DEFAULT_PROMPT_TOKENS,
+                prompt_tokens,
             };
-            let result = provider.transcribe(req).await;
+            let result = providers.transcribe(req).await;
             let _ = tx.send(Msg::Transcribed(id, result));
         });
         self.tasks.insert(id, task);
@@ -216,57 +288,95 @@ impl Daemon {
         let Some(transcript) = self.results.remove(&id) else {
             return;
         };
+        if let Some(history) = self.history.clone() {
+            let entry = Entry {
+                time: history::now(),
+                raw: transcript.text.clone(),
+                cleaned: None,
+                provider: transcript.provider.clone(),
+                low_confidence: transcript.low_confidence,
+            };
+            tokio::task::spawn_blocking(move || {
+                if let Err(e) = history.append(entry) {
+                    tracing::warn!(kind = ?e.kind(), "history write failed");
+                }
+            });
+        }
         let chars = transcript.text.chars().count();
         let low = transcript.low_confidence;
         let text = transcript.text;
         let result =
             tokio::task::spawn_blocking(move || hece_platform::insert(&text, target)).await;
-        let note = if low { " (may be misheard)" } else { "" };
         match result {
-            Ok(Ok(Inserted::Pasted)) => {
-                output::status(&format!("inserted {chars} characters{note}"));
+            Ok(Ok(Inserted::Pasted)) if low => alert("Inserted, but it may be misheard."),
+            Ok(Ok(Inserted::Pasted)) => output::status(&format!("inserted {chars} characters")),
+            Ok(Ok(Inserted::FocusChanged)) => {
+                alert(
+                    "Focus changed, so nothing was pasted. The text is on the clipboard (Ctrl+V).",
+                );
             }
-            Ok(Ok(Inserted::FocusChanged)) => output::status(&format!(
-                "focus changed, nothing pasted; the text is on the clipboard (Ctrl+V){note}"
-            )),
-            Ok(Err(e)) => output::error(&format!("{e} ({})", e.code())),
-            Err(_) => output::error("insert failed"),
+            Ok(Err(e)) => {
+                tracing::warn!(code = e.code(), "insert failed");
+                alert(&format!("{e} ({})", e.code()));
+            }
+            Err(_) => alert("Insert failed."),
         }
     }
 }
 
-pub async fn execute(args: &RunArgs) -> anyhow::Result<()> {
-    let setup = setup(&args.provider)?;
+/// Runs the daemon until Ctrl+C (or the end of the process).
+pub async fn execute(cfg: Config, state_dir: &Path, control: &Path) -> anyhow::Result<()> {
+    let listener = ControlListener::bind(control)?;
+    let setup = setup(&cfg)?;
     let (tx, mut rx) = mpsc::unbounded_channel();
     let hotkey_tx = tx.clone();
     let _hotkeys = Hotkeys::listen(move |e| {
         let _ = hotkey_tx.send(Msg::Hotkey(e));
     })?;
+    let control_tx = tx.clone();
+    tokio::spawn(async move {
+        loop {
+            let request = listener.next().await;
+            if control_tx.send(Msg::Control(request)).is_err() {
+                break;
+            }
+        }
+    });
     if let Some(engine) = setup.engine.clone() {
         tokio::spawn(async move {
             output::status("loading the local model…");
             match engine.prewarm().await {
                 Ok(()) => output::status("model loaded"),
-                Err(e) => output::error(&format!("{e} ({})", e.code())),
+                Err(e) => alert(&format!(
+                    "The local model could not be loaded: {e} ({})",
+                    e.code()
+                )),
             }
         });
     }
-    let (mode, how) = match args.mode {
-        ModeArg::Hold => (Mode::PushToTalk, "hold"),
-        ModeArg::Toggle => (Mode::Toggle, "press"),
+    let (mode, how) = match cfg.recording.mode {
+        RecordMode::Hold => (Mode::PushToTalk, "hold"),
+        RecordMode::Toggle => (Mode::Toggle, "press"),
     };
     output::status(&format!(
         "ready: {how} {RECORD_SHORTCUT} to dictate, {CANCEL_SHORTCUT} cancels, Ctrl+C quits"
     ));
+    tracing::info!(mode = how, "daemon ready");
     let mut daemon = Daemon {
-        provider: setup.provider,
-        vocabulary: setup.vocabulary.map(Arc::new),
-        language: args.provider.language.clone(),
+        providers: Arc::new(setup.providers),
+        vocabulary: setup.vocabulary,
+        language: setup.language,
+        prompt_tokens: setup.prompt_tokens,
+        mode,
         capture_cfg: CaptureConfig {
-            device: args.device.clone(),
-            max_duration: Duration::from_secs(args.max_secs),
+            device: cfg.recording.device.clone(),
+            max_duration: Duration::from_secs(cfg.recording.max_seconds),
             ..CaptureConfig::default()
         },
+        history: cfg
+            .history
+            .enabled
+            .then(|| History::new(state_dir, &cfg.history)),
         tx,
         recorder: Recorder::new(mode, MIN_SAMPLES),
         current: None,
@@ -283,12 +393,13 @@ pub async fn execute(args: &RunArgs) -> anyhow::Result<()> {
             _ = tokio::signal::ctrl_c() => break,
         };
         let Some(msg) = msg else { break };
-        if let Some(input) = daemon.input(msg) {
+        if let Some(input) = daemon.input(msg).await {
             for action in daemon.recorder.handle(input) {
                 daemon.act(action).await;
             }
         }
     }
+    tracing::info!("daemon stopping");
     if let Some(engine) = setup.engine {
         let _ = engine.shutdown().await;
     }

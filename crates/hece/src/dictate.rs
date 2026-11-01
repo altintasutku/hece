@@ -1,68 +1,48 @@
 //! `hece dictate`: one recording from the microphone, stopped with Enter, transcribed and
-//! printed. Also builds the provider shared with `hece run`.
+//! printed. Provider flags are mapped onto the same config sections `run` uses.
 
-use std::sync::Arc;
-
-use anyhow::Context as _;
 use hece_audio::{Capture, CaptureConfig, CaptureEvent};
-use hece_core::Vocabulary;
-use hece_providers::engine_client::{EngineClient, EngineConfig, ProcessSpawner};
-use hece_providers::{
-    KeySource, KeyringStore, LocalProvider, OpenAiConfig, OpenAiProvider, Provider, ProviderRequest,
-};
+use hece_providers::ProviderRequest;
 use tokio::sync::mpsc;
 
 use crate::cli::{DictateArgs, ProviderArgs};
+use crate::config::{Config, ProviderConfig, ProviderKind};
 use crate::output;
+use crate::providers::setup;
 
-/// The configured provider, plus the engine client when it is the local one (for prewarm).
-pub struct Setup {
-    pub provider: Arc<dyn Provider>,
-    #[cfg_attr(
-        not(windows),
-        expect(dead_code, reason = "read by hece run, which is Windows-only")
-    )]
-    pub engine: Option<Arc<EngineClient>>,
-    pub vocabulary: Option<Vocabulary>,
-}
-
-pub fn setup(args: &ProviderArgs) -> anyhow::Result<Setup> {
-    let vocabulary = match &args.vocab {
-        Some(path) => Some(Vocabulary::parse(
-            &std::fs::read_to_string(path)
-                .with_context(|| format!("cannot read {}", path.display()))?,
-        )),
-        None => None,
+fn config(args: &ProviderArgs) -> Config {
+    let mut cfg = Config::default();
+    cfg.transcription.language.clone_from(&args.language);
+    cfg.transcription.vocabulary_file.clone_from(&args.vocab);
+    cfg.provider = if args.api_base.is_some() {
+        ProviderConfig {
+            kind: ProviderKind::Openai,
+            base_url: args.api_base.clone(),
+            model: Some(args.api_model.clone()),
+            key: Some(
+                args.key_env
+                    .as_ref()
+                    .map_or_else(|| "none".to_owned(), |v| format!("env:{v}")),
+            ),
+            segments: args.segments,
+            ..ProviderConfig::default()
+        }
+    } else {
+        ProviderConfig {
+            kind: ProviderKind::Local,
+            model_dir: args.model.clone(),
+            engine: args.engine.clone(),
+            ..ProviderConfig::default()
+        }
     };
-    if let Some(base) = &args.api_base {
-        let mut cfg = OpenAiConfig::new("openai", base, &args.api_model);
-        cfg.segments = args.segments;
-        let key = args
-            .key_env
-            .clone()
-            .map(|var| Arc::new(KeySource::new("openai", Some(var), Arc::new(KeyringStore))));
-        return Ok(Setup {
-            provider: Arc::new(OpenAiProvider::new(cfg, key)?),
-            engine: None,
-            vocabulary,
-        });
-    }
-    let model = args
-        .model
-        .clone()
-        .context("either --model (local engine) or --api-base is required")?;
-    let mut cfg = EngineConfig::default_for(model)?;
-    cfg.engine_path.clone_from(&args.engine);
-    let engine = Arc::new(EngineClient::new(cfg, Arc::new(ProcessSpawner)));
-    Ok(Setup {
-        provider: Arc::new(LocalProvider::new("local", Arc::clone(&engine))),
-        engine: Some(engine),
-        vocabulary,
-    })
+    cfg
 }
 
 pub async fn execute(args: &DictateArgs) -> anyhow::Result<()> {
-    let setup = setup(&args.provider)?;
+    if args.provider.api_base.is_none() && args.provider.model.is_none() {
+        anyhow::bail!("either --model (local engine) or --api-base is required");
+    }
+    let setup = setup(&config(&args.provider))?;
     let cfg = CaptureConfig {
         device: args.device.clone(),
         max_duration: std::time::Duration::from_secs(args.max_secs),
@@ -96,21 +76,24 @@ pub async fn execute(args: &DictateArgs) -> anyhow::Result<()> {
     output::status("transcribing");
     let req = ProviderRequest {
         audio: &recording.samples,
-        language: args.provider.language.as_deref(),
-        vocabulary: setup.vocabulary.as_ref(),
+        language: setup.language.as_deref(),
+        vocabulary: setup.vocabulary.as_deref(),
         prompt_prefix: hece_core::DEFAULT_PROMPT_PREFIX,
-        prompt_tokens: hece_core::DEFAULT_PROMPT_TOKENS,
+        prompt_tokens: setup.prompt_tokens,
     };
-    let transcript = setup
-        .provider
+    let outcome = setup
+        .providers
         .transcribe(req)
         .await
-        .map_err(|e| anyhow::anyhow!("{e} ({})", e.code()))?
-        .with_quality_layers();
+        .map_err(|e| anyhow::anyhow!("{e} ({})", e.code()))?;
+    let transcript = outcome.transcript.with_quality_layers();
     if transcript.low_confidence {
         output::status("may be misheard");
     }
     output::line(&transcript.text);
+    if let Some(engine) = setup.engine {
+        let _ = engine.shutdown().await;
+    }
     Ok(())
 }
 

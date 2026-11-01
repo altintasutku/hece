@@ -2,6 +2,7 @@
 
 mod bench;
 mod cli;
+mod dictate;
 mod output;
 
 use std::process::ExitCode;
@@ -37,6 +38,8 @@ fn run(cli: Cli) -> anyhow::Result<bool> {
         .build()?;
     match cli.command {
         Command::Bench(args) => runtime.block_on(bench::execute(&args)),
+        Command::Devices => dictate::devices().map(|()| false),
+        Command::Dictate(args) => runtime.block_on(dictate::execute(&args)).map(|()| false),
     }
 }
 

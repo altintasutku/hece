@@ -9,9 +9,10 @@ into the focused window. Linux (KDE Plasma Wayland) first; macOS and Windows lat
 
 | Path | Role |
 | --- | --- |
-| `crates/hece-core` | Pure, I/O-free logic: vocabulary, hallucination filter, confidence, negation guard, shared types |
+| `crates/hece-core` | Pure, I/O-free logic: vocabulary, hallucination filter, confidence, negation guard, recording state machine, shared types |
 | `crates/hece-engine` | Local Whisper (CTranslate2); lib + bin; feature `cuda` (off by default) |
 | `crates/hece-providers` | `Provider` trait, STT adapters, API key handling |
+| `crates/hece-audio` | Microphone capture (cpal) and resampling to 16 kHz mono; needs `libasound2-dev` on Linux |
 | `crates/hece-platform` | `Platform` trait + Linux impl: portal shortcuts, paste, clipboard, window class |
 | `crates/hece` | Daemon + CLI binary |
 | `apps/settings` | Tauri 2 settings UI (not created yet) |

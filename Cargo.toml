@@ -51,7 +51,8 @@ rustfft = "6.4.1"
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib"] }
 libz-sys = { version = "1.1.31", features = ["static"] }
 tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }
-ort = "=2.0.0-rc.15"
+# api-17 minimum (no api-N feature): Silero needs nothing newer, and Windows 11 ships onnxruntime 1.17.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "tracing", "download-binaries", "tls-native", "copy-dylibs"] }
 # Never enable the `whisper`/`sentencepiece` features: their protobuf clashes with ort at link time.
 ct2rs = { version = "0.10.2", default-features = false, features = ["cuda", "cuda-small-binary", "ruy"] }
 hound = "3.5.1"

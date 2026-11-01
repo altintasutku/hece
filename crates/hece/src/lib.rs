@@ -6,6 +6,7 @@ mod cli;
 mod config;
 mod dictate;
 mod history;
+#[cfg(windows)]
 mod logging;
 mod output;
 mod paths;

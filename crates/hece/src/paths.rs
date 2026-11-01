@@ -35,6 +35,7 @@ pub fn state_dir() -> anyhow::Result<PathBuf> {
 }
 
 /// Name source of the daemon's control pipe.
+#[cfg(windows)]
 pub fn control_socket() -> anyhow::Result<PathBuf> {
     Ok(state_dir()?.join("daemon.sock"))
 }

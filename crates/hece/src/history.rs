@@ -68,6 +68,10 @@ impl History {
     }
 
     /// Adds `entry` and drops what falls out of the limits. The file is replaced atomically.
+    #[cfg_attr(
+        all(not(windows), not(test)),
+        expect(dead_code, reason = "written by the Windows-only daemon")
+    )]
     pub fn append(&self, entry: Entry) -> std::io::Result<()> {
         let mut entries = self.entries();
         entries.push(entry);
@@ -98,6 +102,10 @@ impl History {
 
 /// Creates `path` readable by its owner only (0600 on unix; on Windows the state directory's
 /// per-user ACL applies).
+#[cfg_attr(
+    all(not(windows), not(test)),
+    expect(dead_code, reason = "written by the Windows-only daemon")
+)]
 fn private_file(path: &Path) -> std::io::Result<std::fs::File> {
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
@@ -148,7 +156,7 @@ mod tests {
         let texts: Vec<String> = h.entries().into_iter().map(|e| e.raw).collect();
         assert_eq!(texts, ["b", "c"]);
         h.clear().unwrap();
-        assert!(h.entries().is_empty());
+        assert_eq!(h.entries(), Vec::<Entry>::new());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

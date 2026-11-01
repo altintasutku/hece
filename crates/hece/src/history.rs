@@ -68,10 +68,6 @@ impl History {
     }
 
     /// Adds `entry` and drops what falls out of the limits. The file is replaced atomically.
-    #[cfg_attr(
-        all(not(windows), not(test)),
-        expect(dead_code, reason = "written by the Windows-only daemon")
-    )]
     pub fn append(&self, entry: Entry) -> std::io::Result<()> {
         let mut entries = self.entries();
         entries.push(entry);
@@ -102,10 +98,6 @@ impl History {
 
 /// Creates `path` readable by its owner only (0600 on unix; on Windows the state directory's
 /// per-user ACL applies).
-#[cfg_attr(
-    all(not(windows), not(test)),
-    expect(dead_code, reason = "written by the Windows-only daemon")
-)]
 fn private_file(path: &Path) -> std::io::Result<std::fs::File> {
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);

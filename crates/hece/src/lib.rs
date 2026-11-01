@@ -1,5 +1,12 @@
 //! Hece CLI and daemon. Two binaries share this code: `hece` (console) and `hecew` (Windows,
 //! no console window, for autostart).
+#![cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "the daemon is Windows-only; Linux support is shelved"
+    )
+)]
 
 mod bench;
 mod cli;

@@ -10,3 +10,12 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+hece-core = { path = "../hece-core" }
+hece-providers = { path = "../hece-providers" }
+anyhow.workspace = true
+clap.workspace = true
+hound.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

@@ -60,7 +60,9 @@ const LENGTH_SLACK: f64 = 8.0;
 static TOKEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[\p{L}\p{N}'’]+").expect("valid regex literal"));
 
-fn is_negation(token: &str) -> bool {
+/// Whether a folded word is a word-level negation token (the guard's predicate).
+#[must_use]
+pub fn is_negation_token(token: &str) -> bool {
     token.starts_with("degil")
         || token.starts_with("yok")
         || token.ends_with("n't")
@@ -83,11 +85,13 @@ fn is_negation(token: &str) -> bool {
         )
 }
 
-fn negation_count(text: &str) -> usize {
+/// Counts negation tokens in `text` (folded, same tokenizer the guard uses).
+#[must_use]
+pub fn negation_count(text: &str) -> usize {
     let folded = fold(text);
     TOKEN
         .find_iter(&folded)
-        .filter(|m| is_negation(m.as_str()))
+        .filter(|m| is_negation_token(m.as_str()))
         .count()
 }
 

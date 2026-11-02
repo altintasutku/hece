@@ -2,6 +2,8 @@
 //! Ctrl+V, the focused window, the daemon control pipe, toasts and autostart. Other platforms
 //! have no implementation yet.
 
+pub mod overlay;
+
 #[cfg(windows)]
 mod windows;
 

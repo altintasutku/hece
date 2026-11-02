@@ -452,6 +452,10 @@ impl Daemon {
                 self.mic_live = false;
                 let (stop, command) = oneshot::channel();
                 self.captures.insert(id, stop);
+                // A worker that exited on its idle TTL loads while the user speaks.
+                if let Some(engine) = &self.engine {
+                    warm(Arc::clone(engine));
+                }
                 tokio::spawn(capture(
                     id,
                     self.capture_cfg.clone(),
@@ -724,6 +728,16 @@ fn prewarm(engine: Arc<EngineClient>) {
                 "The local model could not be loaded: {e} ({})",
                 e.code()
             )),
+        }
+    });
+}
+
+/// Quiet [`prewarm`] on every recording start: a no-op round trip when the model is loaded;
+/// a failure here shows up again on the transcription itself.
+fn warm(engine: Arc<EngineClient>) {
+    tokio::spawn(async move {
+        if let Err(e) = engine.prewarm().await {
+            tracing::warn!(code = e.code(), "engine prewarm on record failed");
         }
     });
 }

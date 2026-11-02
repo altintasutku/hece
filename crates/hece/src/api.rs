@@ -510,11 +510,11 @@ mod tests {
     #[tokio::test]
     async fn missing_or_wrong_token_is_401() {
         let base = start().await;
-        assert_eq!(post(&base, None, wav_48k_stereo()).await.status(), 401);
-        assert_eq!(
-            post(&base, Some("nope"), wav_48k_stereo()).await.status(),
-            401
-        );
+        // An empty file: the 401 goes out before the body is read, and on Windows a large
+        // unread body can make the closing socket reset the connection before the client
+        // sees the response.
+        assert_eq!(post(&base, None, Vec::new()).await.status(), 401);
+        assert_eq!(post(&base, Some("nope"), Vec::new()).await.status(), 401);
     }
 
     #[tokio::test]

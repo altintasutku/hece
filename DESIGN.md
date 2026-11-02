@@ -44,9 +44,9 @@ There is one accent, used sparingly: never as a background block, never for deco
 
 ## Components
 
-- **Section title:** the section name split into syllables with accent middle dots (`Sağ·la·yı·cı`), followed
-  by a one-sentence lede in `--muted`. The syllable split is precomputed in the strings file, not hyphenated
-  at run time.
+- **Section title:** the section name split into syllables with accent middle dots (`Pro·vid·er`,
+  `Sağ·la·yı·cı`), followed by a one-sentence lede in `--muted`. The syllable split is precomputed per language
+  in the strings file, not hyphenated at run time.
 - **Row:** label (600) above one helper line (`--muted`), control on the right, a hairline above it, and a
   hairline below the last row. One row is one config key. Never put rows inside cards.
 - **Select / text input / button:** 1 px `--ink` border, `--field` fill, 7×10 px padding, square, selects at
@@ -55,7 +55,7 @@ There is one accent, used sparingly: never as a background block, never for deco
   `--hairline` border and `--muted` text.
 - **Toggle:** a square checkbox styled as a 1 px box with an ink check. No pill switches.
 - **Key chip:** one bordered box per key, 3×7 px, 4 px apart.
-- **Status text:** "Kayıtlı ✓" or "Kaydedildi" in `--accent` (600). Errors in `--danger` with their stable code
+- **Status text:** "Stored ✓" or "Saved" in `--accent` (600). Errors in `--danger` with their stable code
   in parentheses.
 - **Quote block:** the last dictation sample in Instrument Serif italic with a 2 px `--accent` rule on the left.
   Shown only where it explains a setting (cleanup, history).
@@ -63,13 +63,24 @@ There is one accent, used sparingly: never as a background block, never for deco
 
 ## Behaviour
 
-- Changes save immediately to `config.toml` (no Save button). The row's helper line briefly shows "Kaydedildi".
+- Changes save immediately to `config.toml` (no Save button). The row's helper line briefly shows "Saved".
   Settings that need a daemon restart say so.
-- Secrets are never shown. A key row reads "Kayıtlı ✓" with "Değiştir" / "Sil", or "Anahtar ekle", which opens
-  a masked input.
+- Secrets are never shown. A key row reads "Stored ✓" with "Change" / "Delete", or "Add key", which opens a
+  masked input.
 - The window is about 900×640 and resizable down to 720×520. Below 760 px wide, the navigation collapses into a
   select at the top.
 - Keyboard: every control is reachable with Tab. Ctrl+W and Esc close the window.
+
+## Language
+
+- English is the default for the settings window, the tray menu and tooltip, and toasts. Turkish is used when
+  the Windows display language is Turkish: the window reads `navigator.language` (WebView2 takes it from the
+  display language), the daemon reads `GetUserDefaultUILanguage`. There is no in-app language switch.
+- Every text lives in one table per language: `apps/settings/src/lib/strings.ts` (`en`, `tr`),
+  `crates/hece-platform/src/i18n.rs` (tray) and `crates/hece/src/i18n.rs` (toasts). A new text is added to both.
+- Error codes (`invalid_config`, `paste_failed`, ...) are never translated. Error details, CLI output and logs
+  stay English.
+- The window title and the Start menu shortcut are "Hece Settings" in every language.
 
 ## Recording overlay
 

@@ -33,9 +33,11 @@ The first public release (v0.1.0) is being prepared. Windows only.
 - Tray icon that shows the state (idle, recording, transcribing) and has the menu.
 - Animated recording overlay in the corner of the screen that follows your voice level; it can be
   turned off in settings.
-- Settings window (**Hece Ayarlar**) for the provider, model, shortcuts and options. It edits
+- Settings window (**Hece Settings**) for the provider, model, shortcuts and options. It edits
   `config.toml` without losing your comments and applies changes without a restart. It opens by
   itself on first run.
+- English interface (settings window, tray menu, notifications) with a Turkish translation that is
+  used when the Windows display language is Turkish.
 - Local OpenAI-compatible transcription API on `127.0.0.1`, off by default and protected by a
   token, so other apps can share the loaded model.
 - Command line: `hece run`, `status`, `toggle`, `history`, `repaste`, `key`, `autostart`,

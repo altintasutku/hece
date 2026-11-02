@@ -91,9 +91,7 @@
       {#each snap.models as m (m.id)}
         <option value={m.id}>{m.name}{m.installed ? "" : ` · ${(m.size_mb / 1000).toFixed(1)} GB`}</option>
       {/each}
-      {#if chosen === "custom"}
-        <option value="custom">Kendi klasörün</option>
-      {/if}
+      <option value="custom">Kendi klasörün…</option>
     </select>
     {#if percent !== null}
       <button onclick={cancelDownload}>Vazgeç</button>
@@ -101,6 +99,13 @@
       <button onclick={() => download(selected.id)}>İndir</button>
     {/if}
   </Row>
+  {#if chosen === "custom"}
+    <Row label="Model klasörü" help="CTranslate2 Whisper modeli (içinde model.bin olan klasör)" note={notes.dir}>
+      <input class="path" value={fromConfig === "custom" ? text("provider.model_dir") : ""} spellcheck="false"
+        placeholder="C:\models\my-model"
+        onchange={(e) => change("dir", { "provider.model_dir": e.currentTarget.value.trim() || null })} />
+    </Row>
+  {/if}
 {/if}
 
 {#if v("provider.kind") === "openai"}

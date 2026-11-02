@@ -48,6 +48,9 @@ The first public release (v0.1.0) is being prepared. Windows only.
   `config`, `devices`, `model`, `dictate` and `bench` (accuracy and latency benchmarks).
 - Dictation history and notifications for errors, each with a short message and a stable error
   code.
+- Update check: once a day Hece asks GitHub for the latest release (one request, nothing about you
+  is sent) and shows a notification and a tray entry when a newer version exists. It is the only
+  network call Hece makes on its own; turn it off in the settings or with `[updates] check = false`.
 - Per-user Windows install and uninstall scripts (no administrator rights), Start menu entries and
   optional autostart. The release zip can include the CUDA runtime.
 

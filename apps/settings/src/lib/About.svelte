@@ -1,9 +1,20 @@
 <script lang="ts">
   import Row from "./Row.svelte";
-  import type { Snapshot } from "./api";
+  import type { Snapshot, Value } from "./api";
+  import type { Note } from "./save";
   import { t } from "./strings";
 
-  let { snap }: { snap: Snapshot } = $props();
+  interface Props {
+    snap: Snapshot;
+    save: (changes: Record<string, Value>) => Promise<Note>;
+  }
+  let { snap, save }: Props = $props();
+
+  let note: Note | null = $state(null);
+  async function toggleUpdates(check: boolean) {
+    note = await save({ "updates.check": check });
+    setTimeout(() => (note = null), 3000);
+  }
 </script>
 
 <Row label="Hece" help={t.daemonText(snap.daemon)}>
@@ -11,6 +22,10 @@
 </Row>
 <Row label={t.about.configFile} help={snap.config}>
   <span class="muted">{t.about.commentsKept}</span>
+</Row>
+<Row label={t.about.updates} help={t.about.updatesHelp} {note}>
+  <input type="checkbox" checked={snap.values["updates.check"] !== false}
+    onchange={(e) => toggleUpdates(e.currentTarget.checked)} />
 </Row>
 
 <p class="quote">{t.about.quote}</p>

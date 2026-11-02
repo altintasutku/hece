@@ -64,6 +64,9 @@ overlay = true             # animated sphere in the top-right corner while recor
 [feedback]
 sounds = true              # short soft tones when recording starts, stops or is cancelled
 volume = 50                # 1..100
+
+[updates]
+check = true               # once a day, ask GitHub for a newer release (one GET, nothing about you is sent)
 "#;
 
 /// The whole file.
@@ -79,6 +82,7 @@ pub struct Config {
     pub history: HistoryConfig,
     pub ui: UiConfig,
     pub feedback: FeedbackConfig,
+    pub updates: UpdatesConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -350,6 +354,18 @@ impl Default for UiConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, default)]
+pub struct UpdatesConfig {
+    pub check: bool,
+}
+
+impl Default for UpdatesConfig {
+    fn default() -> Self {
+        Self { check: true }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, default)]
 pub struct FeedbackConfig {
     pub sounds: bool,
     /// Percent, 1..=100.
@@ -504,6 +520,14 @@ mod tests {
     fn ui_overlay_can_be_off() {
         let cfg: Config = toml::from_str("[ui]\noverlay = false\n").unwrap();
         assert!(!cfg.ui.overlay);
+    }
+
+    #[test]
+    fn update_check_defaults_on() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert!(cfg.updates.check);
+        let cfg: Config = toml::from_str("[updates]\ncheck = false\n").unwrap();
+        assert!(!cfg.updates.check);
     }
 
     #[test]

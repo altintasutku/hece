@@ -72,6 +72,9 @@ const en = {
     configFile: "Settings file",
     commentsKept: "Comments are kept",
     quote: "Every setting saves at once; a running Hece reloads it.",
+    // The only network call Hece makes on its own.
+    updates: "Check for new versions",
+    updatesHelp: "Once a day Hece asks GitHub whether a new version exists; nothing about you is sent",
   },
 
   key: {
@@ -205,6 +208,8 @@ const tr: Strings = {
     configFile: "Ayar dosyası",
     commentsKept: "Yorumlar korunur",
     quote: "Her ayar hemen kaydedilir; Hece çalışıyorsa yeniden yüklenir.",
+    updates: "Yeni sürümleri denetle",
+    updatesHelp: "Hece günde bir kez GitHub'a yeni sürüm olup olmadığını sorar; senin hakkında hiçbir şey gönderilmez",
   },
 
   key: {

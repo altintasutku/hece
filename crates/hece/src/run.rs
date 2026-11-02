@@ -7,7 +7,8 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use hece_audio::{AudioError, Capture, CaptureConfig, CaptureEvent, Cue, Level, Mute, Recording};
 use hece_core::chunker::{ChunkPolicy, next_cut};
@@ -30,6 +31,7 @@ use crate::history::{self, Entry, History};
 use crate::i18n::Toast;
 use crate::output;
 use crate::providers::{Setup, setup};
+use crate::update::{self, Version};
 
 /// Recordings shorter than this (0.3 s at 16 kHz) count as "nothing heard".
 const MIN_SAMPLES: usize = 4_800;
@@ -52,6 +54,8 @@ enum Msg {
     Chunk(RecordingId, Vec<i16>),
     Transcribed(RecordingId, Result<Dictation, ProviderError>),
     RefreshTray,
+    /// A newer release exists.
+    UpdateAvailable(Version),
 }
 
 /// A transcribed dictation after the quality layers and the optional cleanup.
@@ -181,6 +185,10 @@ struct Daemon {
     overlay: Option<Overlay>,
     /// How the last finished job ended, until the overlay plays it.
     outcome: Option<Outcome>,
+    /// `[updates] check`, read by the update task before every check.
+    update_check: Arc<AtomicBool>,
+    /// The newer release already announced.
+    update: Option<Version>,
     quit: bool,
 }
 
@@ -313,6 +321,8 @@ impl Daemon {
         self.cues = cfg.feedback.cue_volume();
         self.set_overlay(cfg.ui.overlay);
         self.history = open_history(cfg, &self.state_dir);
+        self.update_check
+            .store(cfg.updates.check, Ordering::Relaxed);
         if let Some(engine) = &setup.engine {
             prewarm(Arc::clone(engine));
         }
@@ -342,6 +352,14 @@ impl Daemon {
                 }
             }
             MenuAction::Quit => self.quit = true,
+            MenuAction::Update => {
+                let opened = self
+                    .update
+                    .is_some_and(|v| hece_platform::open(Path::new(&v.page())).is_ok());
+                if !opened {
+                    self.fail(&Toast::ReleasePageFailed.to_string());
+                }
+            }
         }
         None
     }
@@ -403,6 +421,15 @@ impl Daemon {
             Msg::Desktop(DesktopEvent::Hotkey(HotkeyEvent::Released(Shortcut::Cancel)))
             | Msg::Capture(..)
             | Msg::RefreshTray => None,
+            Msg::UpdateAvailable(version) => {
+                if self.update != Some(version) {
+                    tracing::info!(%version, "update available");
+                    toast(&Toast::UpdateAvailable(&version.to_string()).to_string());
+                    self.desktop.offer_update(&version.to_string());
+                    self.update = Some(version);
+                }
+                None
+            }
             Msg::Chunk(id, chunk) => {
                 self.chunk(id, chunk);
                 None
@@ -833,6 +860,40 @@ fn warm(engine: Arc<EngineClient>) {
     });
 }
 
+/// The first update check waits this long after start, so it never competes with startup.
+const UPDATE_DELAY: Duration = Duration::from_secs(3 * 60);
+/// How often the task looks whether a check is due (the check itself runs at most daily).
+const UPDATE_POLL: Duration = Duration::from_secs(60 * 60);
+
+/// Checks GitHub for a newer release while the daemon runs (see [`update::check`]); a
+/// failure only leaves a debug log line with its code. Returns the switch `reload` flips.
+fn watch_updates(check: bool, state_dir: &Path, tx: Tx) -> Arc<AtomicBool> {
+    let switch = Arc::new(AtomicBool::new(check));
+    let enabled = Arc::clone(&switch);
+    let state_file = state_dir.join(update::STATE_FILE);
+    tokio::spawn(async move {
+        let client = update::client();
+        tokio::time::sleep(UPDATE_DELAY).await;
+        loop {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            let enabled = enabled.load(Ordering::Relaxed);
+            match update::check(enabled, &state_file, now, &client, update::LATEST_URL).await {
+                Ok(Some(version)) => {
+                    if tx.send(Msg::UpdateAvailable(version)).is_err() {
+                        break;
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => tracing::debug!(code = e.code(), "update check failed"),
+            }
+            tokio::time::sleep(UPDATE_POLL).await;
+        }
+    });
+    switch
+}
+
 /// Runs the daemon until Ctrl+C or "Quit" in the tray.
 pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
     let listener = ControlListener::bind(&paths.control)?;
@@ -871,6 +932,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         "ready: {how} {RECORD_SHORTCUT} to dictate, {CANCEL_SHORTCUT} cancels, Ctrl+C quits"
     ));
     tracing::info!(mode = how, "daemon ready");
+    let update_check = watch_updates(cfg.updates.check, &paths.state_dir, tx.clone());
     let level = Level::default();
     let mute = Mute::default();
     let mut daemon = Daemon {
@@ -908,6 +970,8 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         mute,
         cues: cfg.feedback.cue_volume(),
         outcome: None,
+        update_check,
+        update: None,
         quit: false,
     };
     while !daemon.quit {

@@ -1,16 +1,17 @@
 # Hece: product marketing context
 
-Document version: v1
-Last updated: 2026-11-02
+Document version: v2
+Last updated: 2026-11-03
 
-Every page, README section and launch post reads this file first. Facts here must match the code; when a feature
+Every page, README section and launch post reads this file first. Hece is positioned globally:
+English first, no single-language focus. Facts here must match the code; when a feature
 changes, update this file in the same PR.
 
 ## 1. Product overview
 
 - **One-liner:** Hold a hotkey, speak, and the text lands in the window you are typing in.
 - **What it does:** A background voice-dictation app for Windows. Speech is transcribed by a local Whisper model
-  (Turkish fine-tuned large-v3 on an NVIDIA GPU) or a cloud provider, cleaned by quality layers, and pasted into
+  (multilingual Whisper large-v3 turbo on an NVIDIA GPU, or a fine-tuned single-language model) or a cloud provider, cleaned by quality layers, and pasted into
   the focused window with one paste chord.
 - **Category (the shelf people look on):** dictation app / voice typing / speech-to-text for Windows.
 - **Type and business model:** free, open source (MIT). No account, no subscription, no telemetry.
@@ -19,38 +20,37 @@ changes, update this file in the same PR.
 
 - People who write a lot on Windows and think faster than they type: developers writing prompts and messages,
   writers, students, people with RSI.
-- Turkish speakers in particular: Windows voice typing (Win+H) is weak in Turkish and Voice Access does not support
-  it at all.
+- People who dictate in more than one language, or in a language the big apps treat as second class.
 - Privacy-minded users who do not want their voice sent to a server.
 
 **Jobs to be done**
 1. Write a message, prompt or note without typing it.
-2. Dictate Turkish with names and terms spelled right.
+2. Dictate in my language with names and terms spelled right.
 3. Keep using the apps I already use; the text should just appear there.
 
 ## 3. Problems and pain
 
-- Win+H misses Turkish words, needs a network, and has no personal vocabulary.
-- Paid dictation apps (Wispr Flow, Superwhisper) are subscriptions, send audio to the cloud, and are tuned for
-  English. Superwhisper and VoiceInk are macOS-first.
-- Plain Whisper invents text in silence ("Altyazı M.K.", "Thanks for watching") and LLM cleanup can flip a
-  sentence's meaning ("gelmeyeceğim" becoming "geleceğim").
+- Win+H has no personal vocabulary and no choice of model.
+- Paid dictation apps (Wispr Flow, Superwhisper) are subscriptions, and send audio to the cloud. Superwhisper and VoiceInk are macOS-first.
+- Plain Whisper invents text in silence ("Thanks for watching", "Subtitles by ...") and LLM cleanup can flip a
+  sentence's meaning ("I can't make it" becoming "I can make it").
 
 ## 4. Competition
 
 | Competitor | Type | Where it falls short for our audience |
 | --- | --- | --- |
-| Wispr Flow | direct, paid, cloud | subscription; audio goes to their servers; no Turkish page |
-| Superwhisper | direct, paid | macOS-first; English-first |
+| Wispr Flow | direct, paid, cloud | subscription; audio goes to their servers |
+| Superwhisper | direct, paid | macOS-first |
 | Handy | direct, open source | general Whisper models; no quality layers |
-| OpenWhispr | direct, open source | broader scope (meeting notes); not tuned for Turkish |
-| Windows voice typing (Win+H) | indirect, built in | weak Turkish accuracy; no vocabulary |
+| OpenWhispr | direct, open source | broader scope (meeting notes); no meaning guard |
+| Windows voice typing (Win+H) | indirect, built in | no vocabulary, no model choice |
 
 Rule: facts about competitors are dated ("as of Nov 2026") and we admit what they do well.
 
 ## 5. Differentiation
 
-1. **Turkish fine-tuned local model.** `whisper-large-v3-turkish-general`, pinned and checksummed, runs on your GPU.
+1. **Local models you choose.** Multilingual Whisper large-v3 turbo by default, fine-tuned single-language models
+   (Turkish today) one click away; pinned and checksummed, on your GPU.
 2. **Quality layers that do not change your meaning.** Personal vocabulary, a hallucination filter for silence,
    a low-confidence signal, and optional LLM cleanup with a guard that rejects edits which flip negations.
 3. **Local first, cloud if you want.** OpenAI-compatible endpoints, Deepgram, Groq; keys live in the Windows
@@ -71,15 +71,14 @@ Rule: facts about competitors are dated ("as of Nov 2026") and we admit what the
 
 ## 7. Switching forces
 
-- **Push:** typing fatigue, bad Turkish results from Win+H, subscription fatigue.
-- **Pull:** free, local, Turkish-tuned, open source.
+- **Push:** typing fatigue, poor results from Win+H, subscription fatigue, cloud privacy.
+- **Pull:** free, local, open source, meaning kept.
 - **Habit:** "I already type fast enough"; Win+H is already there.
 - **Anxiety:** model download size, GPU requirement, SmartScreen warning.
 
 ## 8. Customer language
 
-- Use: dictation, voice typing, speak, hotkey, local, private, free, open source, "sesle yazma", "sesli yazma",
-  "dikte".
+- Use: dictation, voice typing, speak, hotkey, local, private, free, open source.
 - Avoid: AI-powered, revolutionary, seamless, unlock, supercharge, productivity hacks.
 
 ## 9. Brand voice
@@ -107,8 +106,9 @@ The one conversion: **download Hece for Windows** (GitHub release). Secondary: s
 
 | Date | Learning | Evidence | Applies to | Status |
 | --- | --- | --- | --- | --- |
-| 2026-11-02 | No competitor has a Turkish page; Turkish queries return Win+H guides and download portals | search check in #57 | site, SEO | open |
+| 2026-11-02 | No competitor has a Turkish page; Turkish queries return Win+H guides and download portals | search check in #57 | localized pages later | parked: global focus first (2026-11-03) |
 
 ## Changelog
 
+- v2 (2026-11-03): global positioning; Turkish is one language among many, not the focus.
 - v1 (2026-11-02): first version, drafted from the README and competitor research in #57.

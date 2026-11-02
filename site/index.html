@@ -4,23 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hece: free voice dictation for Windows, local and open source</title>
-<meta name="description" content="Hold a hotkey, speak, and Hece types your words into any app on Windows. Local Whisper fine-tuned for Turkish, no phantom text, your meaning kept. Free and open source.">
+<meta name="description" content="Hold a hotkey, speak, and Hece types your words into any app on Windows. Local Whisper on your GPU, many languages, no phantom text, your meaning kept. Free and open source.">
 <link rel="canonical" href="https://altintasutku.github.io/hece/">
-<link rel="alternate" hreflang="en" href="https://altintasutku.github.io/hece/">
-<link rel="alternate" hreflang="tr" href="https://altintasutku.github.io/hece/tr/">
-<link rel="alternate" hreflang="x-default" href="https://altintasutku.github.io/hece/">
 <meta name="theme-color" content="#07080a">
 <meta name="color-scheme" content="dark">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Hece">
 <meta property="og:title" content="Hece: talk, and it types">
-<meta property="og:description" content="Free, open-source voice dictation for Windows. Local Whisper, fine-tuned for Turkish.">
+<meta property="og:description" content="Free, open-source voice dictation for Windows. Private, local Whisper on your own GPU.">
 <meta property="og:url" content="https://altintasutku.github.io/hece/">
 <meta property="og:image" content="https://altintasutku.github.io/hece/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:locale" content="en_US">
-<meta property="og:locale:alternate" content="tr_TR">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -34,7 +30,7 @@
     {
       "@type": "SoftwareApplication",
       "name": "Hece",
-      "description": "Background voice dictation for Windows. Hold a hotkey, speak, and the text is pasted into the focused window. Local Whisper (fine-tuned for Turkish) or a cloud provider.",
+      "description": "Background voice dictation for Windows. Hold a hotkey, speak, and the text is pasted into the focused window. Local multilingual Whisper on the GPU or a cloud provider.",
       "applicationCategory": "UtilitiesApplication",
       "operatingSystem": "Windows",
       "url": "https://altintasutku.github.io/hece/",
@@ -42,7 +38,7 @@
       "license": "https://opensource.org/licenses/MIT",
       "isAccessibleForFree": true,
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-      "inLanguage": ["en", "tr"],
+      "inLanguage": "en",
       "author": { "@id": "https://altintasutku.github.io/hece/#author" }
     },
     {
@@ -70,7 +66,7 @@
       <a class="hide-sm" href="#how">How it works</a>
       <a class="hide-sm" href="#privacy">Privacy</a>
       <a class="hide-sm" href="#faq">FAQ</a>
-      <a href="tr/" hreflang="tr" lang="tr">Türkçe</a>
+      <a class="hide-sm" href="https://github.com/altintasutku/hece">GitHub</a>
       <a class="btn btn-primary btn-sm" href="https://github.com/altintasutku/hece/releases/latest">Download</a>
     </nav>
   </div>
@@ -91,7 +87,7 @@
 
       <div class="pillars">
         <div class="pillar"><h2><span class="dot" style="background:var(--green)"></span>Private by default</h2><p>Local Whisper runs on your machine. In local mode, audio never leaves your PC.</p></div>
-        <div class="pillar"><h2><span class="dot" style="background:var(--blue)"></span>Fluent in Turkish</h2><p>A Whisper model fine-tuned for Turkish, plus a vocabulary that spells your names and terms.</p></div>
+        <div class="pillar"><h2><span class="dot" style="background:var(--blue)"></span>Speaks your language</h2><p>Multilingual Whisper, plus a vocabulary that spells your names and terms the way you do.</p></div>
         <div class="pillar"><h2><span class="dot" style="background:var(--yellow)"></span>Keeps your meaning</h2><p>No phantom text from silence, and a cleanup step that is not allowed to drop a "not".</p></div>
       </div>
     </div>
@@ -113,8 +109,8 @@
           <div class="window">
             <div class="bar"><span># release-planning</span></div>
             <div class="msgs">
-              <div class="msg"><b>Deniz</b>Is the Kubernetes rollout still on for Thursday?</div>
-              <div class="msg"><b>Ece</b>Waiting on the staging numbers.</div>
+              <div class="msg"><b>Maya</b>Is the Kubernetes rollout still on for Thursday?</div>
+              <div class="msg"><b>Sam</b>Waiting on the staging numbers.</div>
             </div>
             <div class="compose"><mark>Yes, but not before the staging check passes. I'll post the numbers by noon.</mark><span class="caret"></span></div>
           </div>
@@ -142,7 +138,7 @@
           <div class="got"><small>Hece wrote</small>I can't make it on Friday.<br><span class="tag g">"can't" kept</span></div>
         </div>
       </div>
-      <p class="note">Illustrative examples. Optional LLM cleanup only removes fillers and fixes punctuation; if its output drops a negation or changes length sharply, Hece pastes the raw text instead. Low-confidence results are flagged.</p>
+      <p class="note">Illustrative examples. Optional LLM cleanup only removes fillers and fixes punctuation; if its output drops a negation or changes length sharply, Hece pastes the raw text instead. Low-confidence results are flagged. The phantom-text filter and the negation guard cover English and Turkish today; more languages are on the way.</p>
     </div>
   </section>
 
@@ -153,7 +149,7 @@
       <div class="modes">
         <div class="mode">
           <h3>Local</h3>
-          <p>Whisper large-v3, fine-tuned for Turkish, running on your NVIDIA GPU through CTranslate2.</p>
+          <p>Whisper large-v3 turbo running on your NVIDIA GPU through CTranslate2. Fine-tuned models for single languages are one click away.</p>
           <ul>
             <li>Audio never leaves your PC</li>
             <li>The model loads when you need it and is released when idle</li>
@@ -163,7 +159,7 @@
         </div>
         <div class="mode">
           <h3>Cloud</h3>
-          <p>No GPU, or another language? Bring your own key for a provider you trust.</p>
+          <p>No GPU? Bring your own key for a provider you trust.</p>
           <ul>
             <li>OpenAI-compatible endpoints, Deepgram, Groq</li>
             <li>Keys are stored in the Windows Credential Manager</li>
@@ -189,12 +185,12 @@
       <h2>Questions, answered.</h2>
       <div class="faq">
         <details><summary>Is Hece free?</summary><p>Yes. Hece is free and open source under the MIT license. There is no account and no subscription. In cloud mode you pay your provider directly, if they charge.</p></details>
-        <details><summary>Which languages does it support?</summary><p>The local model is Whisper large-v3 fine-tuned for Turkish, so Turkish is where it shines. For other languages, use a cloud provider, or point Hece at another CTranslate2 Whisper model.</p></details>
+        <details><summary>Which languages does it support?</summary><p>The default local model is multilingual Whisper large-v3 turbo, and Hece can download fine-tuned models for single languages (Turkish today). Accuracy varies by language, as it does for Whisper itself. Cloud providers and any CTranslate2 Whisper model work too.</p></details>
         <details><summary>Do I need a GPU?</summary><p>Local transcription needs an NVIDIA GPU with CUDA. Without one, pick a cloud provider (OpenAI-compatible, Deepgram or Groq) and add your key in the settings.</p></details>
         <details><summary>Does it work in every app?</summary><p>It works anywhere you can paste: chat apps, editors, browsers, terminals. Windows blocks pasting into apps running as administrator; the text then stays in Hece's history so you can paste it yourself.</p></details>
         <details><summary>Windows shows a SmartScreen warning. Is that safe?</summary><p>New, unsigned apps get this warning. Code signing is in progress. Until then you can check the source on GitHub and build it yourself.</p></details>
         <details><summary>What about macOS and Linux?</summary><p>Hece is Windows-first. Linux and macOS are planned; the core is written to be portable, and help is welcome on GitHub.</p></details>
-        <details><summary>How is Hece different from Windows voice typing (Win+H)?</summary><p>Hece can run fully offline on your GPU, uses a model tuned for Turkish, learns your vocabulary, and filters phantom text. Win+H has no personal vocabulary.</p></details>
+        <details><summary>How is Hece different from Windows voice typing (Win+H)?</summary><p>Hece can run fully offline on your GPU, learns your vocabulary, filters phantom text, and lets you pick the model or provider. Win+H has no personal vocabulary.</p></details>
       </div>
     </div>
   </section>
@@ -219,7 +215,6 @@
       <a href="https://github.com/altintasutku/hece">GitHub</a>
       <a href="https://github.com/altintasutku/hece/releases">Releases</a>
       <a href="https://github.com/altintasutku/hece/issues">Report an issue</a>
-      <a href="tr/" hreflang="tr" lang="tr">Türkçe</a>
     </nav>
   </div>
 </footer>

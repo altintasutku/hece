@@ -1,9 +1,11 @@
 //! Microphone capture (cpal) with resampling to 16 kHz mono `i16`.
 
 pub mod capture;
+pub mod cue;
 pub mod resample;
 
-pub use capture::{Capture, CaptureConfig, CaptureEvent, Level, Recording, input_devices};
+pub use capture::{Capture, CaptureConfig, CaptureEvent, Level, Mute, Recording, input_devices};
+pub use cue::Cue;
 
 /// Capture failures. [`AudioError::code`] is the stable user-facing code.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -11,6 +13,9 @@ pub enum AudioError {
     /// There is no default input device.
     #[error("no microphone found")]
     NoDevice,
+    /// There is no default output device (for sound cues).
+    #[error("no speaker found")]
+    NoOutputDevice,
     /// The configured device does not exist.
     #[error("the configured microphone was not found")]
     DeviceNotFound,
@@ -43,6 +48,7 @@ impl AudioError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::NoDevice => "mic_missing",
+            Self::NoOutputDevice => "speaker_missing",
             Self::DeviceNotFound => "mic_not_found",
             Self::Unavailable => "mic_unavailable",
             Self::Busy => "mic_busy",

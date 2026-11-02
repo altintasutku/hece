@@ -63,6 +63,13 @@ max_days = 7
 
 [ui]
 overlay = true             # animated sphere in the top-right corner while recording
+
+[feedback]
+sounds = true              # short soft tones when recording starts, stops or is cancelled
+volume = 50                # 1..100
+
+[updates]
+check = true               # once a day, ask GitHub for a newer release (one GET, nothing about you is sent)
 "#;
 
 /// The whole file.
@@ -77,6 +84,8 @@ pub struct Config {
     pub api: ApiConfig,
     pub history: HistoryConfig,
     pub ui: UiConfig,
+    pub feedback: FeedbackConfig,
+    pub updates: UpdatesConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -368,6 +377,43 @@ impl Default for UiConfig {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct UpdatesConfig {
+    pub check: bool,
+}
+
+impl Default for UpdatesConfig {
+    fn default() -> Self {
+        Self { check: true }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct FeedbackConfig {
+    pub sounds: bool,
+    /// Percent, 1..=100.
+    pub volume: u8,
+}
+
+impl Default for FeedbackConfig {
+    fn default() -> Self {
+        Self {
+            sounds: true,
+            volume: 50,
+        }
+    }
+}
+
+impl FeedbackConfig {
+    /// The cue volume (0..=1) when sounds are on.
+    #[must_use]
+    pub fn cue_volume(&self) -> Option<f32> {
+        self.sounds.then(|| f32::from(self.volume) / 100.0)
+    }
+}
+
 /// Config problems; messages name the file and the field.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -409,6 +455,9 @@ impl Config {
                 "[transcription] prompt_tokens must be at most {}",
                 hece_core::MAX_PROMPT_TOKENS
             ));
+        }
+        if !(1..=100).contains(&self.feedback.volume) {
+            return Err("[feedback] volume must be 1..=100".to_owned());
         }
         if self.history.enabled && self.history.max_entries == 0 {
             return Err("[history] max_entries must be at least 1 (or enabled = false)".to_owned());
@@ -512,6 +561,24 @@ mod tests {
     fn ui_overlay_can_be_off() {
         let cfg: Config = toml::from_str("[ui]\noverlay = false\n").unwrap();
         assert!(!cfg.ui.overlay);
+    }
+
+    #[test]
+    fn update_check_defaults_on() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert!(cfg.updates.check);
+        let cfg: Config = toml::from_str("[updates]\ncheck = false\n").unwrap();
+        assert!(!cfg.updates.check);
+    }
+
+    #[test]
+    fn feedback_sounds_default_on_and_parse() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert_eq!(cfg.feedback.cue_volume(), Some(0.5));
+        let cfg: Config = toml::from_str("[feedback]\nsounds = false\nvolume = 80\n").unwrap();
+        assert_eq!(cfg.feedback.cue_volume(), None);
+        let err = Config::parse("[feedback]\nvolume = 0\n").unwrap_err();
+        assert_eq!(err, "[feedback] volume must be 1..=100");
     }
 
     #[test]

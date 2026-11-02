@@ -27,19 +27,15 @@ use crate::{
 
 /// Thread message carrying a [`TrayState`] in `wParam`.
 const WM_TRAY_STATE: u32 = WM_APP + 1;
+/// Thread message: a label waits on the update channel.
+const WM_TRAY_UPDATE: u32 = WM_APP + 2;
 /// Thread message: a [`Rebind`] is waiting on the channel.
-const WM_REBIND: u32 = WM_APP + 2;
+const WM_REBIND: u32 = WM_APP + 3;
 /// How long [`Desktop::set_hotkeys`] waits for the desktop thread.
 const REBIND_TIMEOUT: Duration = Duration::from_secs(2);
+/// Menu id of the update entry (the fixed entries use their index in [`MENU`]).
+const UPDATE_ID: &str = "update";
 const ICON_SIZE: u32 = 32;
-
-/// New shortcuts for the desktop thread, with where to send the outcome.
-#[derive(Debug)]
-struct Rebind {
-    record: Hotkey,
-    cancel: Hotkey,
-    reply: mpsc::SyncSender<Result<(), PlatformError>>,
-}
 
 const MENU: [MenuAction; 6] = [
     MenuAction::Toggle,
@@ -55,7 +51,22 @@ const MENU: [MenuAction; 6] = [
 pub struct Desktop {
     thread_id: u32,
     thread: Option<JoinHandle<()>>,
+    updates: mpsc::Sender<String>,
     rebind: mpsc::Sender<Rebind>,
+}
+
+/// New shortcuts for the desktop thread, with where to send the outcome.
+#[derive(Debug)]
+struct Rebind {
+    record: Hotkey,
+    cancel: Hotkey,
+    reply: mpsc::SyncSender<Result<(), PlatformError>>,
+}
+
+/// The channels the desktop thread reads after a thread message.
+struct Inbox {
+    updates: mpsc::Receiver<String>,
+    rebinds: mpsc::Receiver<Rebind>,
 }
 
 impl Desktop {
@@ -68,15 +79,21 @@ impl Desktop {
         handler: impl Fn(DesktopEvent) + Send + Sync + 'static,
     ) -> Result<Self, PlatformError> {
         let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<u32, PlatformError>>(1);
+        let (updates, updates_rx) = mpsc::channel();
         let (rebind, rebind_rx) = mpsc::channel();
+        let inbox = Inbox {
+            updates: updates_rx,
+            rebinds: rebind_rx,
+        };
         let thread = std::thread::Builder::new()
             .name("hece-desktop".to_owned())
-            .spawn(move || run(Bound::new(record, cancel), handler, &ready_tx, &rebind_rx))
+            .spawn(move || run(Bound { record, cancel }, handler, &ready_tx, &inbox))
             .map_err(|_| PlatformError::Hotkey)?;
         match ready_rx.recv() {
             Ok(Ok(thread_id)) => Ok(Self {
                 thread_id,
                 thread: Some(thread),
+                updates,
                 rebind,
             }),
             Ok(Err(e)) => {
@@ -95,6 +112,19 @@ impl Desktop {
         // SAFETY: posting a message to a thread id has no memory-safety preconditions; if the
         // thread is gone the call just fails.
         unsafe { PostThreadMessageW(self.thread_id, WM_TRAY_STATE, state as usize, 0) };
+    }
+
+    /// Shows (or relabels) a first menu entry "Update available: `version`"; choosing it
+    /// reports [`MenuAction::Update`].
+    pub fn offer_update(&self, version: &str) {
+        let label = format!(
+            "{}: {version}",
+            menu_label(MenuAction::Update, ui_language())
+        );
+        if self.updates.send(label).is_ok() {
+            // SAFETY: as in `set_state`; the label travels on the channel, not in the message.
+            unsafe { PostThreadMessageW(self.thread_id, WM_TRAY_UPDATE, 0, 0) };
+        }
     }
 
     /// Replaces both shortcuts. If one cannot be registered (another application owns it),
@@ -117,17 +147,13 @@ impl Desktop {
     }
 }
 
-/// The registered pair, as configured and as `global-hotkey` keys.
+/// The registered pair.
 struct Bound {
     record: Hotkey,
     cancel: Hotkey,
 }
 
 impl Bound {
-    fn new(record: Hotkey, cancel: Hotkey) -> Self {
-        Self { record, cancel }
-    }
-
     fn keys(&self) -> Result<(HotKey, HotKey), PlatformError> {
         Ok((to_hotkey(&self.record)?, to_hotkey(&self.cancel)?))
     }
@@ -176,7 +202,10 @@ fn store_ids(ids: &Ids, (record, cancel): (HotKey, HotKey)) {
 
 /// Swaps the registered pair for `request`'s, restoring the old pair if that fails.
 fn rebind(manager: &GlobalHotKeyManager, bound: &mut Bound, ids: &Ids, request: &Rebind) {
-    let next = Bound::new(request.record, request.cancel);
+    let next = Bound {
+        record: request.record,
+        cancel: request.cancel,
+    };
     if next.record == bound.record && next.cancel == bound.cancel {
         let _ = request.reply.send(Ok(()));
         return;
@@ -199,6 +228,23 @@ fn rebind(manager: &GlobalHotKeyManager, bound: &mut Bound, ids: &Ids, request: 
         }
     };
     let _ = request.reply.send(result);
+}
+
+/// Adds the update entry on top of the menu, or relabels it.
+fn show_update(menu: &Menu, item: &mut Option<MenuItem>, label: &str) {
+    if let Some(item) = item {
+        item.set_text(label);
+        return;
+    }
+    let entry = MenuItem::with_id(UPDATE_ID, label, true, None);
+    let added = menu
+        .insert(&entry, 0)
+        .and_then(|()| menu.insert(&PredefinedMenuItem::separator(), 1));
+    if added.is_ok() {
+        *item = Some(entry);
+    } else {
+        tracing::debug!("update menu entry could not be added");
+    }
 }
 
 fn state_from(value: usize) -> TrayState {
@@ -249,7 +295,7 @@ fn icon(state: TrayState) -> Option<Icon> {
     Icon::from_rgba(rgba, size, size).ok()
 }
 
-fn tray(record: &Hotkey) -> Option<TrayIcon> {
+fn tray(record: &Hotkey) -> Option<(TrayIcon, Menu)> {
     let menu = Menu::new();
     for (i, action) in MENU.iter().enumerate() {
         if *action == MenuAction::Settings || *action == MenuAction::Quit {
@@ -264,19 +310,27 @@ fn tray(record: &Hotkey) -> Option<TrayIcon> {
         .ok()?;
     }
     let mut builder = TrayIconBuilder::new()
-        .with_menu(Box::new(menu))
+        .with_menu(Box::new(menu.clone()))
         .with_tooltip(tooltip(TrayState::Idle, record));
     if let Some(icon) = icon(TrayState::Idle) {
         builder = builder.with_icon(icon);
     }
-    builder.build().ok()
+    Some((builder.build().ok()?, menu))
+}
+
+fn menu_action(id: &str) -> Option<MenuAction> {
+    if id == UPDATE_ID {
+        return Some(MenuAction::Update);
+    }
+    let i = id.parse::<usize>().ok()?;
+    MENU.get(i).copied()
 }
 
 fn run(
     mut bound: Bound,
     handler: impl Fn(DesktopEvent) + Send + Sync + 'static,
     ready: &mpsc::SyncSender<Result<u32, PlatformError>>,
-    rebinds: &mpsc::Receiver<Rebind>,
+    inbox: &Inbox,
 ) {
     let Ok(manager) = GlobalHotKeyManager::new() else {
         let _ = ready.send(Err(PlatformError::Hotkey));
@@ -311,16 +365,11 @@ fn run(
         }));
     }));
     MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
-        if let Some(action) = e
-            .id()
-            .as_ref()
-            .parse::<usize>()
-            .ok()
-            .and_then(|i| MENU.get(i))
-        {
-            handler(DesktopEvent::Menu(*action));
+        if let Some(action) = menu_action(e.id().as_ref()) {
+            handler(DesktopEvent::Menu(action));
         }
     }));
+    let mut update_item = None;
     // SAFETY: GetCurrentThreadId has no preconditions.
     let thread_id = unsafe { GetCurrentThreadId() };
     let _ = ready.send(Ok(thread_id));
@@ -331,17 +380,25 @@ fn run(
     while unsafe { GetMessageW(&raw mut msg, std::ptr::null_mut(), 0, 0) } > 0 {
         if msg.hwnd.is_null() && msg.message == WM_TRAY_STATE {
             state = state_from(msg.wParam);
-            if let Some(tray) = &tray {
+            if let Some((tray, _)) = &tray {
                 let _ = tray.set_icon(icon(state));
                 let _ = tray.set_tooltip(Some(tooltip(state, &bound.record)));
             }
             continue;
         }
+        if msg.hwnd.is_null() && msg.message == WM_TRAY_UPDATE {
+            while let Ok(label) = inbox.updates.try_recv() {
+                if let Some((_, menu)) = &tray {
+                    show_update(menu, &mut update_item, &label);
+                }
+            }
+            continue;
+        }
         if msg.hwnd.is_null() && msg.message == WM_REBIND {
-            while let Ok(request) = rebinds.try_recv() {
+            while let Ok(request) = inbox.rebinds.try_recv() {
                 rebind(&manager, &mut bound, &ids, &request);
             }
-            if let Some(tray) = &tray {
+            if let Some((tray, _)) = &tray {
                 let _ = tray.set_tooltip(Some(tooltip(state, &bound.record)));
             }
             continue;

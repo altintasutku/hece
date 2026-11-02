@@ -2,7 +2,9 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "Hece contributors",
     "homepage": "https://altintasutku.github.io/hece/",
     "copyright": "Copyright (c) Hece contributors. MIT license.",
@@ -11,11 +13,17 @@
     "shortDescription": "Voice dictation for Windows",
     "longDescription": "Hold a hotkey, speak, and the text lands in the focused window. Local Whisper or a cloud provider.",
     "category": "Productivity",
-    "externalBin": ["binaries/hece", "binaries/hecew", "binaries/hece-engine"],
+    "externalBin": [
+      "binaries/hece",
+      "binaries/hecew",
+      "binaries/hece-engine"
+    ],
     "resources": {
       "binaries/onnxruntime.dll": "onnxruntime.dll",
       "binaries/onnxruntime-LICENSE.txt": "licenses/onnxruntime-LICENSE.txt",
-      "binaries/onnxruntime-ThirdPartyNotices.txt": "licenses/onnxruntime-ThirdPartyNotices.txt"
+      "binaries/onnxruntime-ThirdPartyNotices.txt": "licenses/onnxruntime-ThirdPartyNotices.txt",
+      "binaries/THIRD_PARTY_LICENSES.txt": "licenses/THIRD_PARTY_LICENSES.txt",
+      "../../../LICENSE": "licenses/LICENSE.txt"
     },
     "windows": {
       "nsis": {

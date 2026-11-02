@@ -30,6 +30,8 @@ const KEYS: &[&str] = &[
     "recording.hotkey",
     "recording.cancel_hotkey",
     "ui.overlay",
+    "feedback.sounds",
+    "updates.check",
 ];
 
 /// Sections whose provider may have a key in the keyring.

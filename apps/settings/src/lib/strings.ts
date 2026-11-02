@@ -72,6 +72,9 @@ const en = {
     configFile: "Settings file",
     commentsKept: "Comments are kept",
     quote: "Every setting saves at once; a running Hece reloads it.",
+    // The only network call Hece makes on its own.
+    updates: "Check for new versions",
+    updatesHelp: "Once a day Hece asks GitHub whether a new version exists; nothing about you is sent",
   },
 
   key: {
@@ -160,6 +163,8 @@ const en = {
     windowsDefault: "Windows default",
     overlay: "Recording indicator",
     overlayHelp: "An orb in the top-right corner that reacts to your voice while recording",
+    sounds: "Sound cues",
+    soundsHelp: "A short, soft sound when recording starts, stops or is cancelled",
     maxLength: "Longest recording",
     maxLengthHelp: "Recording stops by itself after this long (at most 11 min)",
     minutes: (m: number) => (m === 1 ? "1 minute" : `${m} minutes`),
@@ -225,6 +230,8 @@ const tr: Strings = {
     configFile: "Ayar dosyası",
     commentsKept: "Yorumlar korunur",
     quote: "Her ayar hemen kaydedilir; Hece çalışıyorsa yeniden yüklenir.",
+    updates: "Yeni sürümleri denetle",
+    updatesHelp: "Hece günde bir kez GitHub'a yeni sürüm olup olmadığını sorar; senin hakkında hiçbir şey gönderilmez",
   },
 
   key: {
@@ -313,6 +320,8 @@ const tr: Strings = {
     windowsDefault: "Windows varsayılanı",
     overlay: "Kayıt göstergesi",
     overlayHelp: "Kayıt sırasında ekranın sağ üstünde sese tepki veren küre",
+    sounds: "Sesli uyarı",
+    soundsHelp: "Kayıt başlarken, biterken ve iptal edilince kısa, yumuşak bir ses",
     maxLength: "En uzun kayıt",
     maxLengthHelp: "Bu süreden sonra kayıt kendiliğinden biter (en çok 11 dk)",
     minutes: (m) => `${m} dakika`,

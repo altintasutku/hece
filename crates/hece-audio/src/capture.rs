@@ -205,6 +205,8 @@ enum Command {
 pub struct Capture {
     commands: mpsc::Sender<Command>,
     thread: Option<JoinHandle<Result<Option<Recording>, AudioError>>>,
+    shared: Arc<Shared>,
+    rate: u32,
 }
 
 impl std::fmt::Debug for Capture {
@@ -222,7 +224,7 @@ impl Capture {
     ) -> Result<Self, AudioError> {
         let started = Instant::now();
         let (commands, command_rx) = mpsc::channel::<Command>();
-        let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(), AudioError>>(1);
+        let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(Arc<Shared>, u32), AudioError>>(1);
         let device = cfg.device.clone();
         let post_roll = cfg.post_roll;
         let max = cfg.max_duration;
@@ -251,7 +253,7 @@ impl Capture {
                         return Err(e);
                     }
                 };
-                let _ = ready_tx.send(Ok(()));
+                let _ = ready_tx.send(Ok((Arc::clone(&shared), rate)));
                 let command = command_rx.recv().unwrap_or(Command::Cancel);
                 if matches!(command, Command::Stop) && !shared.limit_hit.load(Ordering::Relaxed) {
                     std::thread::sleep(post_roll);
@@ -276,9 +278,11 @@ impl Capture {
             })
             .map_err(|_| AudioError::Thread)?;
         match ready_rx.recv() {
-            Ok(Ok(())) => Ok(Self {
+            Ok(Ok((shared, rate))) => Ok(Self {
                 commands,
                 thread: Some(thread),
+                shared,
+                rate,
             }),
             Ok(Err(e)) => {
                 let _ = thread.join();
@@ -289,6 +293,24 @@ impl Capture {
                 Err(AudioError::Thread)
             }
         }
+    }
+
+    /// Sample rate of the device, i.e. of [`Capture::read_from`].
+    #[must_use]
+    pub fn rate(&self) -> u32 {
+        self.rate
+    }
+
+    /// Mono samples at the device rate recorded so far, from index `start` on (for chunking
+    /// while recording).
+    #[must_use]
+    pub fn read_from(&self, start: usize) -> Vec<f32> {
+        let mono = self
+            .shared
+            .mono
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        mono.get(start..).map(<[f32]>::to_vec).unwrap_or_default()
     }
 
     /// Stops after the post-roll, closes the device and returns the 16 kHz mono recording.

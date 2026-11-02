@@ -2,7 +2,6 @@
 //! printed. Provider flags are mapped onto the same config sections `run` uses.
 
 use hece_audio::{Capture, CaptureConfig, CaptureEvent};
-use hece_providers::ProviderRequest;
 use tokio::sync::mpsc;
 
 use crate::cli::{DictateArgs, ProviderArgs};
@@ -74,16 +73,12 @@ pub async fn execute(args: &DictateArgs) -> anyhow::Result<()> {
     }
     let recording = tokio::task::spawn_blocking(move || capture.stop()).await??;
     output::status("transcribing");
-    let req = ProviderRequest {
-        audio: &recording.samples,
-        language: setup.language.as_deref(),
-        vocabulary: setup.vocabulary.as_deref(),
-        prompt_prefix: hece_core::DEFAULT_PROMPT_PREFIX,
+    let params = crate::longform::Params {
+        language: setup.language.clone(),
+        vocabulary: setup.vocabulary.clone(),
         prompt_tokens: setup.prompt_tokens,
     };
-    let outcome = setup
-        .providers
-        .transcribe(req)
+    let outcome = crate::longform::transcribe(&setup.providers, &recording.samples, &params)
         .await
         .map_err(|e| anyhow::anyhow!("{e} ({})", e.code()))?;
     let transcript = outcome.transcript.with_quality_layers();

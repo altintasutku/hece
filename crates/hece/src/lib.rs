@@ -16,6 +16,7 @@ mod dictate;
 mod history;
 #[cfg(windows)]
 mod logging;
+mod longform;
 mod output;
 mod paths;
 mod providers;

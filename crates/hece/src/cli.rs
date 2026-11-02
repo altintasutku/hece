@@ -95,6 +95,10 @@ pub struct BenchArgs {
     /// Short-utterance set to run in the same invocation (for the WER delta of `--long`).
     #[arg(long, requires = "long")]
     pub short: Option<PathBuf>,
+    /// With `--long`: split each file with the live-dictation chunker (pauses after 15 s, cap
+    /// 30 s) and join the chunk transcripts, to compare against whole-file transcription.
+    #[arg(long, requires = "long")]
+    pub chunked: bool,
 }
 
 /// Which provider transcribes, shared by `dictate` and `run`. Without `--api-base` the local

@@ -4,11 +4,13 @@
 //! a toast. Status lines, notifications and logs never contain transcript text.
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use hece_audio::{AudioError, Capture, CaptureConfig, CaptureEvent, Recording};
+use hece_core::chunker::{ChunkPolicy, next_cut};
 use hece_core::recorder::{Action, Input, Mode, Recorder, RecordingId};
 use hece_core::{Transcript, Vocabulary};
 use hece_platform::{
@@ -16,6 +18,8 @@ use hece_platform::{
     MenuAction, RECORD_SHORTCUT, Shortcut, TrayState, Window,
 };
 use hece_providers::{Cleaner, FallbackNotice, ProviderError, ProviderRequest, Providers};
+
+use crate::longform::{self, Params};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
@@ -30,12 +34,19 @@ const MIN_SAMPLES: usize = 4_800;
 const FLAG_FOR: Duration = Duration::from_secs(6);
 /// Time for the tray menu to close and focus to return before a re-paste.
 const MENU_CLOSE: Duration = Duration::from_millis(300);
+/// How often a running recording is checked for a chunk to close.
+const CHUNK_CHECK: Duration = Duration::from_secs(1);
+
+/// A chunk being transcribed while the recording goes on, with its place in the recording.
+type ChunkTask = (Range<usize>, JoinHandle<Result<Transcript, ProviderError>>);
 
 enum Msg {
     Desktop(DesktopEvent),
     Control(ControlRequest),
     Capture(RecordingId, CaptureEvent),
     Captured(RecordingId, Result<Recording, AudioError>),
+    /// A chunk (16 kHz) closed while the recording goes on.
+    Chunk(RecordingId, Vec<i16>),
     Transcribed(RecordingId, Result<Dictation, ProviderError>),
     RefreshTray,
 }
@@ -65,9 +76,15 @@ fn toast(message: &str) {
     tokio::task::spawn_blocking(move || hece_platform::notify("Hece", &message));
 }
 
-/// Owns one capture: opens the microphone, then stops (`true`) or discards (`false`) it on
-/// command and reports the recording.
-async fn capture(id: RecordingId, cfg: CaptureConfig, tx: Tx, command: oneshot::Receiver<bool>) {
+/// Owns one capture: opens the microphone, sends chunks closed at natural pauses while
+/// recording, then stops (`true`) or discards (`false`) it on command and reports the
+/// recording.
+async fn capture(
+    id: RecordingId,
+    cfg: CaptureConfig,
+    tx: Tx,
+    mut command: oneshot::Receiver<bool>,
+) {
     let events = tx.clone();
     let started = tokio::task::spawn_blocking(move || {
         Capture::start(&cfg, move |e| {
@@ -86,7 +103,28 @@ async fn capture(id: RecordingId, cfg: CaptureConfig, tx: Tx, command: oneshot::
             return;
         }
     };
-    if command.await.unwrap_or(false) {
+    let policy = ChunkPolicy::default();
+    let mut consumed = 0;
+    let mut tick = tokio::time::interval(CHUNK_CHECK);
+    let keep = loop {
+        tokio::select! {
+            keep = &mut command => break keep.unwrap_or(false),
+            _ = tick.tick() => {
+                let fresh = capture.read_from(consumed);
+                let rate = capture.rate();
+                let Some(cut) = next_cut(&fresh, rate, &policy) else { continue };
+                consumed += cut;
+                let piece = fresh[..cut].to_vec();
+                let resampled =
+                    tokio::task::spawn_blocking(move || hece_audio::resample::to_16k(&piece, rate))
+                        .await;
+                if let Ok(Ok(chunk)) = resampled {
+                    let _ = tx.send(Msg::Chunk(id, chunk));
+                }
+            }
+        }
+    };
+    if keep {
         let result = tokio::task::spawn_blocking(move || capture.stop())
             .await
             .unwrap_or(Err(AudioError::Thread));
@@ -117,6 +155,8 @@ struct Daemon {
     targets: HashMap<RecordingId, Option<Window>>,
     tasks: HashMap<RecordingId, JoinHandle<()>>,
     results: HashMap<RecordingId, Dictation>,
+    /// Chunks transcribed while recording, in order.
+    chunks: HashMap<RecordingId, Vec<ChunkTask>>,
     failures: HashMap<RecordingId, String>,
     /// A warning/error colour shown on the tray until the given time.
     flag: Option<(TrayState, Instant)>,
@@ -278,6 +318,10 @@ impl Daemon {
             Msg::Desktop(DesktopEvent::Hotkey(HotkeyEvent::Released(Shortcut::Cancel)))
             | Msg::Capture(..)
             | Msg::RefreshTray => None,
+            Msg::Chunk(id, chunk) => {
+                self.chunk(id, chunk);
+                None
+            }
             Msg::Captured(id, Ok(recording)) => {
                 let samples = recording.samples.len();
                 self.audio.insert(id, recording.samples);
@@ -356,6 +400,7 @@ impl Daemon {
                 if let Some(stop) = self.captures.remove(&id) {
                     let _ = stop.send(false);
                 }
+                self.drop_chunks(id);
                 output::status("cancelled");
             }
             Action::Transcribe(id) => self.transcribe(id),
@@ -363,12 +408,14 @@ impl Daemon {
                 if let Some(task) = self.tasks.remove(&id) {
                     task.abort();
                 }
+                self.drop_chunks(id);
                 self.audio.remove(&id);
                 self.targets.remove(&id);
                 output::status("cancelled");
             }
             Action::Insert(id) => self.insert(id).await,
             Action::Failed(id) | Action::NothingHeard(id) => {
+                self.drop_chunks(id);
                 self.audio.remove(&id);
                 self.targets.remove(&id);
                 let why = self
@@ -380,25 +427,70 @@ impl Daemon {
         }
     }
 
+    fn params(&self) -> Params {
+        Params {
+            language: self.language.clone(),
+            vocabulary: self.vocabulary.clone(),
+            prompt_tokens: self.prompt_tokens,
+        }
+    }
+
+    /// Starts transcribing a chunk of a recording that is still running (or stopping).
+    fn chunk(&mut self, id: RecordingId, chunk: Vec<i16>) {
+        let live = self.current == Some(id) || self.targets.contains_key(&id);
+        if !live {
+            return;
+        }
+        let primary = Arc::clone(self.providers.primary());
+        let params = self.params();
+        let tasks = self.chunks.entry(id).or_default();
+        let start = tasks.last().map_or(0, |(range, _)| range.end);
+        let range = start..start + chunk.len();
+        let handle = tokio::spawn(async move {
+            let req = ProviderRequest {
+                audio: &chunk,
+                language: params.language.as_deref(),
+                vocabulary: params.vocabulary.as_deref(),
+                prompt_prefix: hece_core::DEFAULT_PROMPT_PREFIX,
+                prompt_tokens: params.prompt_tokens,
+            };
+            primary.transcribe(req).await
+        });
+        tracing::debug!(samples = range.len(), "chunk sent while recording");
+        tasks.push((range, handle));
+    }
+
+    fn drop_chunks(&mut self, id: RecordingId) {
+        for (_, handle) in self.chunks.remove(&id).unwrap_or_default() {
+            handle.abort();
+        }
+    }
+
     fn transcribe(&mut self, id: RecordingId) {
         let Some(audio) = self.audio.remove(&id) else {
             return;
         };
         let providers = Arc::clone(&self.providers);
-        let vocabulary = self.vocabulary.clone();
-        let language = self.language.clone();
-        let prompt_tokens = self.prompt_tokens;
+        let params = self.params();
+        let chunks = self.chunks.remove(&id).unwrap_or_default();
         let llm = self.cleaner.clone();
         let tx = self.tx.clone();
         let task = tokio::spawn(async move {
-            let req = ProviderRequest {
-                audio: &audio,
-                language: language.as_deref(),
-                vocabulary: vocabulary.as_deref(),
-                prompt_prefix: hece_core::DEFAULT_PROMPT_PREFIX,
-                prompt_tokens,
+            let transcribed = if chunks.is_empty() {
+                longform::transcribe(&providers, &audio, &params).await
+            } else {
+                // Only the tail after the last chunk is new; earlier chunks are (nearly) done.
+                let mut parts = Vec::with_capacity(chunks.len() + 1);
+                let mut end = 0;
+                for (range, handle) in chunks {
+                    end = range.end;
+                    let result = handle.await.ok();
+                    parts.push((range, result));
+                }
+                parts.push((end.min(audio.len())..audio.len(), None));
+                longform::assemble(&providers, &audio, parts, &params).await
             };
-            let result = match providers.transcribe(req).await {
+            let result = match transcribed {
                 Ok(outcome) => {
                     let transcript = outcome.transcript.with_quality_layers();
                     let cleanup = match &llm {
@@ -571,6 +663,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         targets: HashMap::new(),
         tasks: HashMap::new(),
         results: HashMap::new(),
+        chunks: HashMap::new(),
         failures: HashMap::new(),
         flag: None,
         quit: false,

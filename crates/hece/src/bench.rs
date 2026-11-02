@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use hece_core::Vocabulary;
+use hece_core::chunker::{ChunkPolicy, next_cut};
 use hece_core::metrics::{Scored, score_long, score_short};
 use hece_providers::engine_client::{
     EngineClient, EngineClientError, EngineConfig, ProcessSpawner,
@@ -182,6 +183,31 @@ pub fn load_list(dir: &Path) -> Result<Vec<(PathBuf, String)>, BenchError> {
 
 /// Transcribes every row in order; a failing file is recorded as `(file name, code)` and
 /// skipped. Returns the scored rows and the failures. Warm-up is the caller's job.
+/// Splits each file with the live-dictation chunker and joins the chunk transcripts, the way
+/// the daemon transcribes long recordings while they are still being recorded.
+#[derive(Debug)]
+pub struct Chunked<'a, T>(pub &'a T);
+
+impl<T: Transcriber + Sync> Transcriber for Chunked<'_, T> {
+    async fn transcribe(&self, audio: &[i16]) -> Result<String, String> {
+        let policy = ChunkPolicy::default();
+        let mut texts = Vec::new();
+        let mut rest = audio;
+        loop {
+            let mono: Vec<f32> = rest.iter().map(|s| f32::from(*s) / 32_768.0).collect();
+            let cut = next_cut(&mono, SAMPLE_RATE, &policy).unwrap_or(rest.len());
+            let text = self.0.transcribe(&rest[..cut]).await?;
+            texts.push(text.trim().to_owned());
+            rest = &rest[cut..];
+            if rest.is_empty() {
+                break;
+            }
+        }
+        texts.retain(|t| !t.is_empty());
+        Ok(texts.join(" "))
+    }
+}
+
 pub async fn run<T: Transcriber>(
     rows: &[(PathBuf, String)],
     transcriber: &T,
@@ -285,7 +311,11 @@ async fn measure(
             }
             None => None,
         };
-        let (scored, failures) = run(main_rows, &transcriber).await;
+        let (scored, failures) = if args.chunked {
+            run(main_rows, &Chunked(&transcriber)).await
+        } else {
+            run(main_rows, &transcriber).await
+        };
         report_failures(&failures);
         let report = score_long(&scored, failures.len(), terms);
         if let Some(s) = &short_report {

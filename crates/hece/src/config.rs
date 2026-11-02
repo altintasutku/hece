@@ -57,6 +57,9 @@ port = 8765
 enabled = true
 max_entries = 50
 max_days = 7
+
+[ui]
+overlay = true             # animated sphere in the top-right corner while recording
 "#;
 
 /// The whole file.
@@ -70,6 +73,7 @@ pub struct Config {
     pub cleanup: Option<CleanupSection>,
     pub api: ApiConfig,
     pub history: HistoryConfig,
+    pub ui: UiConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -327,6 +331,18 @@ impl Default for HistoryConfig {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct UiConfig {
+    pub overlay: bool,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self { overlay: true }
+    }
+}
+
 /// Config problems; messages name the file and the field.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -443,6 +459,18 @@ mod tests {
                 "{err}"
             );
         }
+    }
+
+    #[test]
+    fn ui_overlay_defaults_on() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert!(cfg.ui.overlay);
+    }
+
+    #[test]
+    fn ui_overlay_can_be_off() {
+        let cfg: Config = toml::from_str("[ui]\noverlay = false\n").unwrap();
+        assert!(!cfg.ui.overlay);
     }
 
     #[test]

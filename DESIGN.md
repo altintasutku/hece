@@ -71,6 +71,24 @@ There is one accent, used sparingly: never as a background block, never for deco
   select at the top.
 - Keyboard: every control is reachable with Tab. Ctrl+W and Esc close the window.
 
+## Recording overlay
+
+The animated sphere in the top-right corner while recording (look "A3", chosen on 2026-11-02; spec in
+`docs/superpowers/specs/2026-11-02-recording-overlay-design.md`). It is a deliberate exception to the single-accent
+and no-gradient rules: it lives on the user's desktop, not in this window, and its job is to be noticed.
+
+| Use | Colour |
+| --- | --- |
+| Entry (mic opening) | light blue `#5ab4e6` mixed into violet |
+| Base mesh, speaking | violet `#9682ff` |
+| Silent | silver `#a8acb6` |
+| Syllable waves, transcribing | rainbow (hue from the edge's angle, turning with time) |
+| Failed or cancelled | `--danger` `#b3261e` on the core |
+| Not pasted (focus changed) | amber `#f5a524` on the core |
+
+140×140 logical px, 16 px from the work area's top-right corner, click-through, never focused. Exits take 300 ms.
+With Windows animation effects off it stops rotating and deforming; colour still follows the state.
+
 ## Avoid
 
 Cards, pastel tints, gradients, pill buttons, shadows, a second accent colour, emoji in the UI, and dark-graphite

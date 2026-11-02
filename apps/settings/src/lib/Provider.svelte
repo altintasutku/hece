@@ -20,14 +20,71 @@
     setTimeout(() => (notes[row] = null), 3000);
   }
 
-  // OpenAI-compatible needs a URL and model; start from OpenAI's own so the switch is valid.
-  function kindChanges(kind: string): Record<string, Value> {
-    if (kind !== "openai") return { "provider.kind": kind };
-    return {
-      "provider.kind": kind,
-      "provider.base_url": text("provider.base_url") || "https://api.openai.com/v1",
-      "provider.model": text("provider.model") || "whisper-1",
-    };
+  // Engine choices. Cloud presets fill URL, model and name so nobody types a URL; every choice
+  // also clears the fields it does not use (a Groq base_url left behind would send Deepgram
+  // requests to Groq). `segments` (verbose_json) only for Whisper models, which support it.
+  type Choice = "local" | "groq" | "openai" | "deepgram" | "custom";
+  const GROQ_URL = "https://api.groq.com/openai/v1";
+  const OPENAI_URL = "https://api.openai.com/v1";
+  const GROQ_MODELS = ["whisper-large-v3", "whisper-large-v3-turbo"];
+  const unused = {
+    "provider.name": null,
+    "provider.base_url": null,
+    "provider.model": null,
+    "provider.segments": null,
+  };
+  const presets: Record<Exclude<Choice, "custom">, Record<string, Value>> = {
+    local: { ...unused, "provider.kind": "local" },
+    groq: {
+      "provider.kind": "openai",
+      "provider.name": "groq",
+      "provider.base_url": GROQ_URL,
+      "provider.model": GROQ_MODELS[0],
+      "provider.segments": true,
+    },
+    openai: {
+      "provider.kind": "openai",
+      "provider.name": null,
+      "provider.base_url": OPENAI_URL,
+      "provider.model": "whisper-1",
+      "provider.segments": true,
+    },
+    deepgram: { ...unused, "provider.kind": "deepgram" },
+  };
+  const keyHelp: Record<string, string> = {
+    groq: "console.groq.com/keys adresinden al; Kimlik Bilgisi Yöneticisi'nde saklanır",
+    openai: "platform.openai.com/api-keys adresinden al; Kimlik Bilgisi Yöneticisi'nde saklanır",
+    deepgram: "console.deepgram.com adresinden al; Kimlik Bilgisi Yöneticisi'nde saklanır",
+  };
+
+  const choice: Choice = $derived.by(() => {
+    const kind = v("provider.kind") ?? "local";
+    if (kind === "local" || kind === "deepgram") return kind;
+    const url = text("provider.base_url").replace(/\/+$/, "");
+    if (url === GROQ_URL) return "groq";
+    if (url === OPENAI_URL) return "openai";
+    return "custom";
+  });
+
+  async function choose(next: string) {
+    const changes =
+      next === "custom"
+        ? {
+            "provider.kind": "openai",
+            "provider.base_url": "http://127.0.0.1:8000/v1",
+            "provider.model": text("provider.model") || "whisper-1",
+            "provider.segments": null,
+          }
+        : presets[next as keyof typeof presets];
+    await change("kind", changes);
+    // The keyring entry is named after the provider, so the stored-key state may differ.
+    refresh();
+  }
+
+  function modelChanges(model: string): Record<string, Value> {
+    const changes: Record<string, Value> = { "provider.model": model };
+    if (choice !== "custom") changes["provider.segments"] = model.startsWith("whisper") || null;
+    return changes;
   }
   const languages: [string, string][] = [["tr", "Türkçe"], ["en", "İngilizce"], ["", "Otomatik algıla"]];
 
@@ -76,11 +133,13 @@
   }
 </script>
 
-<Row label="Motor" help="Yerel: Türkçe Whisper, ekran kartında. Bulut: anahtar gerekir." note={notes.kind}>
-  <select value={v("provider.kind") ?? "local"} onchange={(e) => change("kind", kindChanges(e.currentTarget.value))}>
+<Row label="Motor" help="Yerel: ekran kartında, ses bilgisayardan çıkmaz. Bulut: anahtar gerekir, ses sağlayıcıya gider." note={notes.kind}>
+  <select value={choice} onchange={(e) => choose(e.currentTarget.value)}>
     <option value="local">Yerel (GPU)</option>
-    <option value="openai">OpenAI uyumlu</option>
-    <option value="deepgram">Deepgram</option>
+    <option value="groq">Groq (bulut)</option>
+    <option value="openai">OpenAI (bulut)</option>
+    <option value="deepgram">Deepgram (bulut)</option>
+    <option value="custom">OpenAI uyumlu sunucu</option>
   </select>
 </Row>
 
@@ -103,23 +162,39 @@
   </Row>
 {/if}
 
-{#if v("provider.kind") === "openai"}
-  <Row label="Adres" help="OpenAI, Groq ya da yerel bir sunucu (…/v1)" note={notes.url}>
-    <input class="path" value={text("provider.base_url")} spellcheck="false"
-      onchange={(e) => change("url", { "provider.base_url": e.currentTarget.value.trim() })} />
+{#if choice === "groq"}
+  <Row label="Model" help="large-v3 daha doğru, turbo daha hızlı ve ucuz" note={notes.modelName}>
+    <select value={text("provider.model")} onchange={(e) => change("modelName", modelChanges(e.currentTarget.value))}>
+      {#each GROQ_MODELS as m (m)}
+        <option value={m}>{m}</option>
+      {/each}
+      {#if !GROQ_MODELS.includes(text("provider.model"))}
+        <option value={text("provider.model")}>{text("provider.model")}</option>
+      {/if}
+    </select>
   </Row>
-  <Row label="Model" help="Sağlayıcının model adı, örneğin whisper-large-v3" note={notes.modelName}>
+{:else if choice === "openai" || choice === "custom"}
+  {#if choice === "custom"}
+    <Row label="Adres" help="Sunucunun …/v1 adresi (speaches, whisper.cpp, LocalAI)" note={notes.url}>
+      <input class="path" value={text("provider.base_url")} spellcheck="false"
+        onchange={(e) => change("url", { "provider.base_url": e.currentTarget.value.trim() })} />
+    </Row>
+  {/if}
+  <Row label="Model" help="Sağlayıcının model adı, örneğin whisper-1" note={notes.modelName}>
     <input value={text("provider.model")} spellcheck="false"
-      onchange={(e) => change("modelName", { "provider.model": e.currentTarget.value.trim() })} />
+      onchange={(e) => change("modelName", modelChanges(e.currentTarget.value.trim()))} />
   </Row>
-  <Row label="Ad" help="Mesajlarda ve anahtar kaydında görünür" note={notes.name}>
-    <input value={text("provider.name")} placeholder="openai" spellcheck="false"
-      onchange={(e) => change("name", { "provider.name": e.currentTarget.value.trim() || null })} />
-  </Row>
+  {#if choice === "custom"}
+    <Row label="Ad" help="Mesajlarda ve anahtar kaydında görünür" note={notes.name}>
+      <input value={text("provider.name")} placeholder="openai" spellcheck="false"
+        onchange={async (e) => { await change("name", { "provider.name": e.currentTarget.value.trim() || null }); refresh(); }} />
+    </Row>
+  {/if}
 {/if}
 
-{#if v("provider.kind") !== "local" && v("provider.kind") !== null}
-  <KeyRow section="provider" stored={snap.keys.provider ?? false} onchange={refresh} />
+{#if choice !== "local"}
+  <KeyRow section="provider" stored={snap.keys.provider ?? false} onchange={refresh}
+    help={keyHelp[choice]} />
 {/if}
 
 <Row label="Dil" help="Konuştuğun dil; otomatik algılama daha yavaş ve hatalı olabilir" note={notes.lang}>

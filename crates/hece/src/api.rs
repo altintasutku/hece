@@ -15,7 +15,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use hece_core::ipc::MAX_AUDIO_SAMPLES;
 use hece_core::{Transcript, Vocabulary};
-use hece_providers::{Cleaner, ProviderRequest, Providers};
+use hece_providers::{Cleaner, Providers};
 use serde_json::json;
 
 /// Largest accepted upload (`OpenAI`'s limit).
@@ -216,14 +216,12 @@ async fn transcriptions(
         .map(Arc::new)
         .or_else(|| state.vocabulary.clone());
     let language = form.language.or_else(|| state.language.clone());
-    let req = ProviderRequest {
-        audio: &audio,
-        language: language.as_deref(),
-        vocabulary: vocabulary.as_deref(),
-        prompt_prefix: hece_core::DEFAULT_PROMPT_PREFIX,
+    let params = crate::longform::Params {
+        language,
+        vocabulary,
         prompt_tokens: state.prompt_tokens,
     };
-    let transcript = match state.providers.transcribe(req).await {
+    let transcript = match crate::longform::transcribe(&state.providers, &audio, &params).await {
         Ok(outcome) => outcome.transcript.with_quality_layers(),
         Err(e) => {
             tracing::warn!(code = e.code(), "api transcription failed");

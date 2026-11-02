@@ -481,10 +481,35 @@ pub struct Paths {
     pub control: PathBuf,
 }
 
+/// Starts the local API with the daemon's providers (shares the loaded model).
+async fn start_api(
+    cfg: &Config,
+    paths: &Paths,
+    setup: &crate::providers::Setup,
+) -> anyhow::Result<()> {
+    let state = Arc::new(crate::api::ApiState {
+        providers: Arc::clone(&setup.providers),
+        cleaner: setup.cleaner.clone(),
+        vocabulary: setup.vocabulary.clone(),
+        language: setup.language.clone(),
+        prompt_tokens: setup.prompt_tokens,
+        token: crate::api::token(&paths.state_dir.join("api-token"))?,
+    });
+    let addr = crate::api::serve(state, cfg.api.port).await?;
+    tracing::info!(port = addr.port(), "local API listening");
+    output::status(&format!(
+        "local API on http://{addr}/v1 (token in api-token)"
+    ));
+    Ok(())
+}
+
 /// Runs the daemon until Ctrl+C or "Quit" in the tray.
 pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
     let listener = ControlListener::bind(&paths.control)?;
     let setup = setup(&cfg)?;
+    if cfg.api.enabled {
+        start_api(&cfg, &paths, &setup).await?;
+    }
     let (tx, mut rx) = mpsc::unbounded_channel();
     let desktop_tx = tx.clone();
     let desktop = Desktop::start(move |e| {
@@ -520,7 +545,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
     ));
     tracing::info!(mode = how, "daemon ready");
     let mut daemon = Daemon {
-        providers: Arc::new(setup.providers),
+        providers: setup.providers,
         cleaner: setup.cleaner,
         vocabulary: setup.vocabulary,
         language: setup.language,

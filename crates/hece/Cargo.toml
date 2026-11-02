@@ -27,4 +27,9 @@ toml.workspace = true
 rpassword.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+axum.workspace = true
+getrandom.workspace = true
 
+
+[dev-dependencies]
+reqwest.workspace = true

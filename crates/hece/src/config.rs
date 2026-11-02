@@ -49,6 +49,10 @@ model_dir = 'C:\path\to\large-v3-turkish-ec03ccf'      # scripts/prepare_model.p
 # base_url = "http://127.0.0.1:11434/v1"   # openai kind only
 # timeout_seconds = 10
 
+[api]
+enabled = false            # local OpenAI-compatible API on 127.0.0.1; token in %LOCALAPPDATA%\hece\api-token
+port = 8765
+
 [history]
 enabled = true
 max_entries = 50
@@ -64,6 +68,7 @@ pub struct Config {
     pub provider: ProviderConfig,
     pub fallback: Option<ProviderConfig>,
     pub cleanup: Option<CleanupSection>,
+    pub api: ApiConfig,
     pub history: HistoryConfig,
 }
 
@@ -268,6 +273,22 @@ impl CleanupSection {
             return Err("[cleanup] kind = \"openai\" needs base_url and model".to_owned());
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct ApiConfig {
+    pub enabled: bool,
+    pub port: u16,
+}
+
+impl Default for ApiConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: 8765,
+        }
     }
 }
 

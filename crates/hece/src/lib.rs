@@ -8,6 +8,7 @@
     )
 )]
 
+mod api;
 mod bench;
 mod cli;
 mod config;

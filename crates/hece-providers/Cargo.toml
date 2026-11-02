@@ -24,3 +24,6 @@ keyring.workspace = true
 
 [dev-dependencies]
 wiremock.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+hece-platform = { path = "../hece-platform" }

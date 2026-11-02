@@ -14,8 +14,8 @@ License: MIT
 
 ## Install (Windows)
 
-1. Build the zip (`powershell -File scripts/package.ps1`, add `-BundleCuda` to ship the CUDA
-   runtime DLLs) or use a release zip, unpack it and run
+1. Build the zip (`powershell -File scripts/package.ps1`, it includes the CUDA runtime DLLs,
+   `-NoCuda` leaves them out) or use a release zip, unpack it and run
    `powershell -ExecutionPolicy Bypass -File install.ps1`. It installs to
    `%LOCALAPPDATA%\Programs\Hece` (no administrator rights), adds a Start menu entry and turns on
    autostart (`-NoAutostart` skips that).

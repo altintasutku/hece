@@ -78,4 +78,7 @@ rpassword = "7.5.4"
 tauri-winrt-notification = "0.8.1"
 # Local OpenAI-compatible API.
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "multipart", "json"] }
+# Own accept loop for the API: header-read timeout (axum::serve sets no timer).
+hyper = { version = "1.12.0", features = ["http1", "server"] }
+hyper-util = { version = "0.1.21", features = ["tokio", "service"] }
 getrandom = "0.4.3"

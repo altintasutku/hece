@@ -98,7 +98,7 @@
     {#if percent !== null}
       <button onclick={cancelDownload}>{t.provider.cancel}</button>
     {:else if selected && !selected.installed}
-      <button onclick={() => download(selected.id)}>{t.provider.download}</button>
+      <button class="primary" onclick={() => download(selected.id)}>{t.provider.download}</button>
     {/if}
   </Row>
 {/if}

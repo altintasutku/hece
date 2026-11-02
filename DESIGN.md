@@ -1,65 +1,69 @@
-# hece design: Dizgi
+# hece design: Gece
 
-The settings app's visual language. Direction **A · Dizgi** was chosen on 2026-11-02 from three candidates; see
-the PR #37 history for the board. Character comes from the name: *hece* means syllable, so the app reads like a
-typeset page and the syllable dot marks rhythm. Every screen follows this file, and new decisions are recorded here.
+Hece's visual language, for the website (`site/`) and the settings app (`apps/settings`). Direction **Gece** was
+chosen for the website on 2026-11-03 from three candidates (Gece, Sahne, Sıcak; #57) and applied to the settings
+app by decision of 2026-11-03 to match the site (#59), so the app people open after downloading looks like the
+page they downloaded it from. Every screen follows this file, and new decisions are recorded here.
 
-Reference: WIRED (editorial duet of display serif + clean sans, hairlines, almost no chrome). From it we take the
-hierarchy, hairline rules, square controls and colour restraint. The palette and fonts are our own.
+Reference: Raycast (dark canvas, surface ladder instead of shadows, white pill CTA, keycaps). Character comes from
+the product: the recording orb is the hero, so the violet accent is the orb's colour, and *hece* means syllable,
+so section titles keep the syllable dot.
+
+History: the settings app first followed **Dizgi** (chosen 2026-11-02, PR #37): a light, typeset page with IBM
+Plex Sans, Instrument Serif titles, square controls and hairlines only. Gece replaced it; the syllable-dot title
+and the one-row-per-config-key layout carry over.
+
+## Tokens
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--canvas` | `#07080a` | page and window background |
+| `--surface` / `--surface-2` / `--card` | `#0d0d0d` / `#101111` / `#121212` | depth ladder (no shadows): app sidebar / fields, banner, active nav / cards |
+| `--hairline` | `#242728` | card borders, row rules, sidebar divider |
+| `--hairline-strong` | `#3a3d40` (app) / `rgba(255,255,255,0.16)` (site) | field and ghost-button borders |
+| `--ink` / `--body` / `--mute` | `#f4f4f6` / `#cdcdcd` / `#9c9c9d` | headings, labels / body / helper text (6.7:1 on `--card`) |
+| `--violet` | `#9682ff` | syllable dots, wordmark dot, "saved" state, checked boxes, eyebrows (6.2:1 on `--card`) |
+| `--focus` (site `--blue`) | `#57c1ff` | focus outline |
+| `--danger` (site `--red`) | `#ff6161` | errors only (6.3:1 on `--card`) |
+| `--green`, `--yellow` | `#59d499`, `#ffc533` | site only, as small dots and tags in feature illustrations |
+
+One accent (violet). Text contrast is at least 4.5:1; control boundaries that carry meaning on their own (the
+checkbox) at least 3:1 (`#6b6e72`).
 
 ## Type
 
-| Role | Font | Size / line / tracking | Weight |
-| --- | --- | --- | --- |
-| Section title | Instrument Serif | 44 / 1.0 / -0.5px | 400 |
-| Sub-title, quotes | Instrument Serif italic | 19 / 1.35 | 400 |
-| Body, labels, controls | IBM Plex Sans | 14 / 1.4 | 400, 500, 600 |
-| Helper text | IBM Plex Sans | 12.5 / 1.4 | 400 |
-| Key chips | IBM Plex Sans | 12 / 1 | 500 |
-
-Fonts are bundled with the app (SIL OFL), never loaded from the network. No Inter or Geist. No uppercase or mono
-labels.
-
-## Colour
-
-| Token | Hex | Use |
-| --- | --- | --- |
-| `--paper` | `#fbfaf7` | window and content background |
-| `--ink` | `#111111` | text, control borders, active nav marker |
-| `--muted` | `#757575` | helper text, inactive nav (4.6:1 on paper) |
-| `--hairline` | `#e0e0e0` | row rules, nav divider |
-| `--accent` | `#057dbc` | syllable dot, links, "saved" state, focus ring (4.5:1 on paper) |
-| `--danger` | `#b3261e` | destructive actions and errors only |
-| `--field` | `#ffffff` | control fill |
-
-There is one accent, used sparingly: never as a background block, never for decoration.
+- **Schibsted Grotesk** (variable, 400-700) for everything. Headings 600 with -0.02em tracking. App: section
+  title 32 px, body and labels 14 px (labels 600), helper text 12.5 px, controls 13 px.
+- **Instrument Serif** only for the `He·ce` wordmark (site header, app sidebar).
+- Both are bundled (SIL OFL): `site/fonts` for the site, `apps/settings/src/fonts` plus `@fontsource/instrument-serif`
+  for the app. No network font requests. No Inter or Geist. No uppercase or mono labels.
 
 ## Space and shape
 
-- 4 px grid. Content padding 26 px top and 30 px sides. Rows 14 px top and bottom. 22 px between a section's
-  lede and its first row.
-- Navigation column 150 px with a 1 px hairline on its right. Content column at most 640 px.
-- Radius is 0 on every control. Only the OS window itself is rounded.
-- No shadows. Depth comes from hairlines.
+- 4 px grid. App: content padding 30 px top, 32 px sides; rows 14 px top and bottom; 22 px between a section's
+  lede and its card. Sidebar 180 px on `--surface` with a hairline on its right. Content column at most 720 px.
+- Cards: 12 px radius, 1 px `--hairline`, `--card` fill. Fields 8 px radius. Buttons are pills.
+- No shadows on chrome. Keycaps are the only gradient besides the orb and the site's hero glow.
 
 ## Components
 
-- **Section title:** the section name split into syllables with accent middle dots (`Pro·vid·er`,
-  `Sağ·la·yı·cı`), followed by a one-sentence lede in `--muted`. The syllable split is precomputed per language
-  in the strings file, not hyphenated at run time.
-- **Row:** label (600) above one helper line (`--muted`), control on the right, a hairline above it, and a
-  hairline below the last row. One row is one config key. Never put rows inside cards.
-- **Select / text input / button:** 1 px `--ink` border, `--field` fill, 7×10 px padding, square, selects at
-  most 300 px wide (long device names are cut with an ellipsis). Hover
-  inverts (ink fill, paper text). Focus shows a 2 px `--accent` outline offset by 2 px. Disabled uses
-  `--hairline` border and `--muted` text.
-- **Toggle:** a square checkbox styled as a 1 px box with an ink check. No pill switches.
-- **Key chip:** one bordered box per key, 3×7 px, 4 px apart.
-- **Status text:** "Stored ✓" or "Saved" in `--accent` (600). Errors in `--danger` with their stable code
-  in parentheses.
-- **Quote block:** the last dictation sample in Instrument Serif italic with a 2 px `--accent` rule on the left.
-  Shown only where it explains a setting (cleanup, history).
-- **Navigation:** text links. The active one is `--ink` 600 with a 2 px ink bar on the column's right edge.
+- **Section title (app):** the section name split into syllables with violet middle dots (`Pro·vid·er`,
+  `Sağ·la·yı·cı`), `aria-label` set to the plain name, then a one-sentence lede in `--mute`. The syllable split is
+  precomputed per language in the strings file, not hyphenated at run time.
+- **Settings card and row:** a section's rows sit in one card. A row is label (600, `--ink`) above one helper
+  line (`--mute`), control on the right, a hairline between rows. One row is one config key.
+- **Select / text input:** `--surface-2` fill, 1 px `--hairline-strong` border, 8 px radius, 7×10 px padding,
+  selects at most 300 px wide (long device names are cut with an ellipsis). Hover lightens the border.
+- **Buttons:** ghost pill (hairline border, ink text) by default; the white pill (`#fff`, text `#18191a`) is the
+  primary action of a row or banner (Start, Download, Add key, Save). Disabled uses `--hairline` and `--mute`.
+- **Focus:** a 2 px `--focus` outline offset by 2 px on every control.
+- **Toggle:** an 18 px checkbox with 5 px radius; checked is violet with a dark check. No pill switches.
+- **Key chip:** keycap — 7 px radius, `#1c1d1f → #0d0d0d` gradient, `#2c2e30` border, 1 px inner top highlight.
+- **Status text:** "Stored ✓" or "Saved" in `--violet` (600). Errors in `--danger` with their stable code in
+  parentheses.
+- **Banner:** `--surface-2` card above the settings card, text in `--ink`, a white pill action on the right.
+- **Navigation (app):** wordmark on top, then text links in `--mute`; the active one is `--ink` on `--surface-2`
+  with a hairline ring, 8 px radius.
 
 ## Behaviour
 
@@ -67,9 +71,10 @@ There is one accent, used sparingly: never as a background block, never for deco
   Settings that need a daemon restart say so.
 - Secrets are never shown. A key row reads "Stored ✓" with "Change" / "Delete", or "Add key", which opens a
   masked input.
-- The window is about 900×640 and resizable down to 720×520. Below 760 px wide, the navigation collapses into a
+- The window is about 900×640 and resizable down to 720×520. Below 760 px wide, the sidebar collapses into a
   select at the top.
 - Keyboard: every control is reachable with Tab. Ctrl+W and Esc close the window.
+- The site honours `prefers-reduced-motion` by stopping every animation; the app has no animation.
 
 ## Language
 
@@ -86,7 +91,7 @@ There is one accent, used sparingly: never as a background block, never for deco
 
 The animated sphere in the top-right corner while recording (look "A3", chosen on 2026-11-02; spec in
 `docs/superpowers/specs/2026-11-02-recording-overlay-design.md`). It is a deliberate exception to the single-accent
-and no-gradient rules: it lives on the user's desktop, not in this window, and its job is to be noticed.
+and no-gradient rules: it lives on the user's desktop, not in a window, and its job is to be noticed.
 
 | Use | Colour |
 | --- | --- |
@@ -94,40 +99,20 @@ and no-gradient rules: it lives on the user's desktop, not in this window, and i
 | Base mesh, speaking | violet `#9682ff` |
 | Silent | silver `#a8acb6` |
 | Syllable waves, transcribing | rainbow (hue from the edge's angle, turning with time) |
-| Failed or cancelled | `--danger` `#b3261e` on the core |
+| Failed or cancelled | red `#b3261e` on the core |
 | Not pasted (focus changed) | amber `#f5a524` on the core |
 
 140×140 logical px, 16 px from the work area's top-right corner, click-through, never focused. Exits take 300 ms.
 With Windows animation effects off it stops rotating and deforming; colour still follows the state.
 
-## Avoid
+## Website
 
-Cards, pastel tints, gradients, pill buttons, shadows, a second accent colour, emoji in the UI, and dark-graphite
-+ neon (no dark theme until it is designed here).
-
-## Website: Gece
-
-The public site in `site/` has its own direction, **Gece**, chosen on 2026-11-03 from three candidates (Gece,
-Sahne, Sıcak; #57). Reference: Raycast (dark canvas, surface ladder instead of shadows, white pill CTA, keycaps).
-Its character comes from the product: the recording orb is the hero, so the first thing a visitor sees is what
-they will see on their own desktop. The settings app keeps Dizgi until #59 decides otherwise; the "no dark theme"
-rule above applies to the app, not the site.
-
-| Token | Value | Use |
-| --- | --- | --- |
-| `--canvas` | `#07080a` | page background |
-| `--surface` / `--surface-2` / `--card` | `#0d0d0d` / `#101111` / `#121212` | depth ladder (no shadows) |
-| `--hairline` | `#242728` | card borders, rules |
-| `--ink` / `--body` / `--mute` | `#f4f4f6` / `#cdcdcd` / `#9c9c9d` | headings / body / helper text |
-| `--violet` | `#9682ff` | eyebrows, logo dot, list markers, caret (from the orb) |
-| `--green`, `--blue`, `--yellow`, `--red` | `#59d499`, `#57c1ff`, `#ffc533`, `#ff6161` | only as small dots and tags in feature illustrations |
-
-- **Type:** Schibsted Grotesk (variable, 400-700) for everything; headings 600 with negative tracking. Instrument
-  Serif only for the `He·ce` wordmark. Both self-hosted in `site/fonts` (SIL OFL); no third-party requests.
-- **Shape:** cards 12 px radius with a 1 px hairline; buttons are pills (white primary, hairline ghost). Keycaps
-  are the only gradient besides the orb and the hero glow.
 - **Orb:** the overlay look (A3) in CSS: rainbow ring blurred behind a violet core with two syllable waves. It
-  spins slowly; `prefers-reduced-motion` stops every animation.
+  spins slowly.
 - **Copy:** facts must match `.agents/product-marketing.md`. No invented numbers, testimonials or logos. Examples
   are synthetic and labelled as illustrative.
-- **Avoid:** light sections, a second primary colour, shadows on chrome, Inter/Geist, stock photos.
+
+## Avoid
+
+Light sections or a light theme, a second primary colour, shadows on chrome, pastel tints, Inter/Geist, stock
+photos, emoji in the UI, and gradients other than the keycaps, the orb and the site's hero glow.

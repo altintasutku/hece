@@ -38,6 +38,7 @@ The first public release (v0.1.0) is being prepared. Windows only.
   itself on first run.
 - English interface (settings window, tray menu, notifications) with a Turkish translation that is
   used when the Windows display language is Turkish.
+- The settings window shares the website's dark look (Gece).
 - Local OpenAI-compatible transcription API on `127.0.0.1`, off by default and protected by a
   token, so other apps can share the loaded model.
 - Command line: `hece run`, `status`, `toggle`, `history`, `repaste`, `key`, `autostart`,

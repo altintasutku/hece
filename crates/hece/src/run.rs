@@ -158,6 +158,9 @@ struct Daemon {
     /// Chunks transcribed while recording, in order.
     chunks: HashMap<RecordingId, Vec<ChunkTask>>,
     failures: HashMap<RecordingId, String>,
+    /// Whether the current recording's microphone delivers audio yet (Handy #1879: show
+    /// "recording" only once speech is actually captured).
+    mic_live: bool,
     /// A warning/error colour shown on the tray until the given time.
     flag: Option<(TrayState, Instant)>,
     quit: bool,
@@ -180,8 +183,11 @@ impl Daemon {
     fn refresh_tray(&mut self) {
         let flagged = self.flag.filter(|(_, until)| Instant::now() < *until);
         self.flag = flagged;
-        let state = if self.recorder.is_recording() {
+        let state = if self.recorder.is_recording() && self.mic_live {
             TrayState::Recording
+        } else if self.recorder.is_recording() {
+            // Opening the microphone can take a second; stay grey until audio flows.
+            TrayState::Idle
         } else if self.pending() > 0 {
             TrayState::Processing
         } else {
@@ -299,6 +305,7 @@ impl Daemon {
             Msg::Control(request) => self.control(request).await,
             Msg::Capture(id, event) if self.current == Some(id) => match event {
                 CaptureEvent::Live { latency } => {
+                    self.mic_live = true;
                     tracing::info!(latency_ms = latency.as_millis(), "mic live");
                     output::status("● recording");
                     None
@@ -378,6 +385,7 @@ impl Daemon {
         match action {
             Action::StartCapture(id) => {
                 self.current = Some(id);
+                self.mic_live = false;
                 let (stop, command) = oneshot::channel();
                 self.captures.insert(id, stop);
                 tokio::spawn(capture(
@@ -665,6 +673,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         results: HashMap::new(),
         chunks: HashMap::new(),
         failures: HashMap::new(),
+        mic_live: false,
         flag: None,
         quit: false,
     };

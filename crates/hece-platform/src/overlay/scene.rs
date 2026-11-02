@@ -153,6 +153,17 @@ impl Scene {
     pub fn visible(&self) -> bool {
         self.visible
     }
+
+    /// Whether `phase` begins a new appearance (hidden or fading out, and now shown again), so
+    /// the window should be placed again and the entry animation replayed.
+    #[must_use]
+    pub fn starts_fresh(&self, phase: Phase) -> bool {
+        let shows = matches!(
+            phase,
+            Phase::Opening | Phase::Listening | Phase::Transcribing
+        );
+        shows && (!self.visible || self.exit.is_some())
+    }
 }
 
 /// The prototype's canvas size; drawing is scaled from it to the pixmap.
@@ -483,6 +494,19 @@ mod tests {
     #[test]
     fn hidden_draws_nothing() {
         assert!(!drawn(&Scene::new(false)));
+    }
+
+    #[test]
+    fn showing_again_during_exit_starts_fresh() {
+        let mut scene = Scene::new(false);
+        assert!(scene.starts_fresh(Phase::Opening));
+        assert!(!scene.starts_fresh(Phase::Idle));
+        assert!(!scene.starts_fresh(Phase::Finished(Outcome::Inserted)));
+        scene.set_phase(Phase::Listening, ms(0));
+        assert!(!scene.starts_fresh(Phase::Transcribing));
+        scene.set_phase(Phase::Finished(Outcome::Inserted), ms(1000));
+        assert!(scene.starts_fresh(Phase::Opening));
+        assert!(!scene.starts_fresh(Phase::Idle));
     }
 
     #[test]

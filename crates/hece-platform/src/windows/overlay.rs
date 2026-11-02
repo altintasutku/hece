@@ -394,16 +394,14 @@ fn run(level: &impl Fn() -> f32, ready: &mpsc::SyncSender<Result<u32, PlatformEr
         let now = started.elapsed();
         if msg.hwnd.is_null() && msg.message == WM_OVERLAY_PHASE {
             let phase = Phase::from_raw(msg.wParam);
-            if frames.scene.visible() {
+            if frames.scene.starts_fresh(phase) {
+                // A new appearance: possibly another monitor, scale or animation setting.
+                frames.scene = Scene::new(reduced_motion());
                 frames.scene.set_phase(phase, now);
-            } else {
-                let mut scene = Scene::new(reduced_motion());
-                scene.set_phase(phase, now);
-                if scene.visible() {
-                    frames.scene = scene;
-                    frames.scene.tick(now, level());
-                    frames.show();
-                }
+                frames.scene.tick(now, level());
+                frames.show();
+            } else if frames.scene.visible() {
+                frames.scene.set_phase(phase, now);
             }
             continue;
         }

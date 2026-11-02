@@ -1,6 +1,6 @@
 # Recording overlay: design
 
-Date: 2026-11-02. Status: draft, waiting for approval.
+Date: 2026-11-02. Status: approved by Utku on 2026-11-02 (look A3, native window, tiny-skia).
 
 ## Intent
 
@@ -97,7 +97,7 @@ Shape of the solution:
   Created once at daemon start, hidden, and reused.
 - **Drawing:** each frame is rendered on the CPU with **tiny-skia** into a premultiplied BGRA pixmap, copied into a
   DIB section and pushed with `UpdateLayeredWindow` (per-pixel alpha). At 140×140 logical px this is tiny.
-  *Pending Utku's approval: tiny-skia is a new dependency.*
+  tiny-skia (new dependency) approved by Utku on 2026-11-02.
 - **Thread:** the overlay runs on its own thread with its own message loop (keeps the 60 fps timer off the hotkey
   and tray thread). The daemon talks to it the same way it talks to the desktop thread: posting `WM_APP + n`
   messages (state changes). The thread drives frames with a timer only while visible.

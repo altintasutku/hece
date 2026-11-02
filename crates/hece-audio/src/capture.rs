@@ -6,7 +6,7 @@
 //! latency is measured; and the end of a sentence can be cut, so capture continues for a
 //! short post-roll after stop.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
@@ -28,6 +28,8 @@ pub struct CaptureConfig {
     pub max_duration: Duration,
     /// Extra capture after stop so the last word is not cut.
     pub post_roll: Duration,
+    /// Where the input level of the latest audio block is published (for a level meter).
+    pub level: Level,
 }
 
 impl Default for CaptureConfig {
@@ -37,8 +39,39 @@ impl Default for CaptureConfig {
             device: None,
             max_duration: Duration::from_mins(10),
             post_roll: Duration::from_millis(300),
+            level: Level::default(),
         }
     }
+}
+
+/// The RMS (linear, 0..1) of the latest captured audio block, shared between the audio thread
+/// and readers such as the recording overlay. Only this number leaves capture, never samples.
+#[derive(Debug, Clone, Default)]
+pub struct Level(Arc<AtomicU32>);
+
+impl Level {
+    /// The latest RMS; 0 before any audio of the current capture arrived.
+    #[must_use]
+    pub fn get(&self) -> f32 {
+        f32::from_bits(self.0.load(Ordering::Relaxed))
+    }
+
+    fn set(&self, rms: f32) {
+        self.0.store(rms.to_bits(), Ordering::Relaxed);
+    }
+}
+
+fn rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let sum: f32 = samples.iter().map(|s| s * s).sum();
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "an audio block is far below 2^24 samples"
+    )]
+    let n = samples.len() as f32;
+    (sum / n).sqrt()
 }
 
 /// Things that happen during a capture. Delivered on the audio thread: the handler must be
@@ -98,6 +131,7 @@ fn find_device(name: Option<&str>) -> Result<cpal::Device, AudioError> {
 
 /// Shared between the audio callback and the capture thread.
 struct Shared {
+    level: Level,
     mono: Mutex<Vec<f32>>,
     limit_frames: usize,
     limit_hit: AtomicBool,
@@ -123,6 +157,7 @@ impl Shared {
         }
         let frames: Vec<f32> = data.iter().map(|s| s.to_sample::<f32>()).collect();
         let mono = downmix(&frames, channels);
+        self.level.set(rms(&mono));
         let mut buf = self.mono.lock().unwrap_or_else(PoisonError::into_inner);
         let room = self.limit_frames.saturating_sub(buf.len());
         buf.extend_from_slice(&mono[..mono.len().min(room)]);
@@ -231,6 +266,8 @@ impl Capture {
         let device = cfg.device.clone();
         let post_roll = cfg.post_roll;
         let max = cfg.max_duration;
+        let level = cfg.level.clone();
+        level.set(0.0);
         let events: Box<dyn Fn(CaptureEvent) + Send + Sync> = Box::new(events);
         let thread = std::thread::Builder::new()
             .name("hece-capture".to_owned())
@@ -238,6 +275,7 @@ impl Capture {
                 let opened = device_and_config(device.as_deref()).and_then(|(dev, supported)| {
                     let rate = supported.sample_rate();
                     let shared = Arc::new(Shared {
+                        level,
                         mono: Mutex::new(Vec::new()),
                         limit_frames: frames_for(max, rate),
                         limit_hit: AtomicBool::new(false),
@@ -362,8 +400,17 @@ mod tests {
     use super::*;
 
     fn shared(limit_frames: usize, events: mpsc::Sender<CaptureEvent>) -> Shared {
+        shared_with(limit_frames, events, Level::default())
+    }
+
+    fn shared_with(
+        limit_frames: usize,
+        events: mpsc::Sender<CaptureEvent>,
+        level: Level,
+    ) -> Shared {
         let events = Mutex::new(events);
         Shared {
+            level,
             mono: Mutex::new(Vec::new()),
             limit_frames,
             limit_hit: AtomicBool::new(false),
@@ -399,5 +446,16 @@ mod tests {
         let mono = s.mono.lock().unwrap().clone();
         assert_eq!(mono.len(), 2);
         assert!((mono[0] - 0.5).abs() < 1e-3 && mono[1].abs() < 1e-6);
+    }
+
+    #[test]
+    fn push_publishes_rms_level() {
+        let (tx, _rx) = mpsc::channel();
+        let level = Level::default();
+        let s = shared_with(usize::MAX, tx, level.clone());
+        s.push::<f32>(&[0.5, -0.5, 0.5, -0.5], 1);
+        assert!((level.get() - 0.5).abs() < 1e-6);
+        s.push::<f32>(&[0.0; 4], 1);
+        assert!(level.get() == 0.0);
     }
 }

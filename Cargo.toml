@@ -84,3 +84,5 @@ axum = { version = "0.8.9", default-features = false, features = ["http1", "toki
 hyper = { version = "1.12.0", features = ["http1", "server"] }
 hyper-util = { version = "0.1.21", features = ["tokio", "service"] }
 getrandom = "0.4.3"
+# Recording overlay: CPU 2D drawing (anti-aliased lines, gradients).
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }

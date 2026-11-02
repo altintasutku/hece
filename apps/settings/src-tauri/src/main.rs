@@ -22,6 +22,7 @@ const KEYS: &[&str] = &[
     "recording.mode",
     "recording.device",
     "recording.max_seconds",
+    "ui.overlay",
 ];
 
 /// Sections whose provider may have a key in the keyring.

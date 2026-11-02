@@ -16,3 +16,5 @@
 *.raw
 # Models and download caches (mise.toml [env])
 /.cache/
+# Brainstorm companion scratch files
+/.superpowers/

@@ -1,7 +1,7 @@
 <script lang="ts">
   import KeyRow from "./KeyRow.svelte";
   import Row from "./Row.svelte";
-  import type { Snapshot, Value } from "./api";
+  import { cancelDownload, downloadModel, type Snapshot, type Value } from "./api";
   import type { Note } from "./save";
 
   interface Props {
@@ -30,6 +30,50 @@
     };
   }
   const languages: [string, string][] = [["tr", "Türkçe"], ["en", "İngilizce"], ["", "Otomatik algıla"]];
+
+  // The model in use: the catalog entry whose folder model_dir points at, else the first
+  // downloaded one (what the daemon picks when model_dir is empty), else a custom folder.
+  let wanted: string | null = $state(null);
+  const fromConfig = $derived.by(() => {
+    const dir = text("provider.model_dir");
+    if (!dir) return (snap.models.find((m) => m.installed) ?? snap.models[0])?.id ?? "custom";
+    return snap.models.find((m) => m.path === dir)?.id ?? "custom";
+  });
+  const chosen = $derived(wanted ?? fromConfig);
+  const selected = $derived(snap.models.find((m) => m.id === chosen));
+  let percent: number | null = $state(null);
+  let failure: string | null = $state(null);
+  const modelHelp = $derived(
+    percent !== null
+      ? `İndiriliyor… %${percent}`
+      : failure
+        ? `İndirilemedi (${failure}); tekrar denersen kaldığı yerden devam eder`
+        : selected && !selected.installed
+          ? `Bir kez indirilir (${(selected.size_mb / 1000).toFixed(1)} GB), sonra internetsiz çalışır`
+          : "Konuşmayı bu bilgisayarda, ekran kartında yazıya çevirir",
+  );
+
+  async function pick(id: string) {
+    wanted = id;
+    failure = null;
+    const m = snap.models.find((x) => x.id === id);
+    if (m?.installed) await change("model", { "provider.model_dir": m.path });
+  }
+
+  async function download(id: string) {
+    failure = null;
+    percent = 0;
+    try {
+      await downloadModel(id, (p) => (percent = p));
+      wanted = null;
+      refresh();
+    } catch (e) {
+      const code = String(e);
+      if (code !== "model_download_cancelled") failure = code;
+    } finally {
+      percent = null;
+    }
+  }
 </script>
 
 <Row label="Motor" help="Yerel: Türkçe Whisper, ekran kartında. Bulut: anahtar gerekir." note={notes.kind}>
@@ -40,10 +84,24 @@
   </select>
 </Row>
 
-<Row label="Yerel model klasörü" help="prepare_model.py çıktısı; içinde model.bin olmalı" note={notes.model}>
-  <input class="path" value={text("provider.model_dir")} spellcheck="false"
-    onchange={(e) => change("model", { "provider.model_dir": e.currentTarget.value.trim() || null })} />
-</Row>
+{#if (v("provider.kind") ?? "local") === "local"}
+  <Row label="Model" help={modelHelp} note={notes.model}>
+    <select value={chosen} disabled={percent !== null}
+      onchange={(e) => pick(e.currentTarget.value)}>
+      {#each snap.models as m (m.id)}
+        <option value={m.id}>{m.name}{m.installed ? "" : ` · ${(m.size_mb / 1000).toFixed(1)} GB`}</option>
+      {/each}
+      {#if chosen === "custom"}
+        <option value="custom">Kendi klasörün</option>
+      {/if}
+    </select>
+    {#if percent !== null}
+      <button onclick={cancelDownload}>Vazgeç</button>
+    {:else if selected && !selected.installed}
+      <button onclick={() => download(selected.id)}>İndir</button>
+    {/if}
+  </Row>
+{/if}
 
 {#if v("provider.kind") === "openai"}
   <Row label="Adres" help="OpenAI, Groq ya da yerel bir sunucu (…/v1)" note={notes.url}>

@@ -55,6 +55,9 @@ pub enum Command {
     /// Manage API keys in the OS keyring.
     #[command(subcommand)]
     Key(KeyCommand),
+    /// List or download local models.
+    #[command(subcommand)]
+    Model(ModelCommand),
     /// Start hece at login.
     #[cfg(windows)]
     Autostart {
@@ -179,6 +182,18 @@ pub enum KeyCommand {
     Delete {
         /// Provider name.
         provider: String,
+    },
+}
+
+/// Local models.
+#[derive(Debug, Subcommand)]
+pub enum ModelCommand {
+    /// Show the models Hece can download and which are installed.
+    List,
+    /// Download a model (resumes an interrupted download).
+    Download {
+        /// Model id from `hece model list`; default: the first one.
+        id: Option<String>,
     },
 }
 

@@ -51,7 +51,7 @@ pub fn build(
     let name = p.name();
     Ok(match p.kind {
         ProviderKind::Local => {
-            let model = p.model_dir.clone().context("model_dir is required")?;
+            let model = p.local_model().context("no local model")?;
             let client = if let Some(client) = engine {
                 Arc::clone(client)
             } else {

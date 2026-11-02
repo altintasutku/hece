@@ -17,6 +17,7 @@ mod history;
 #[cfg(windows)]
 mod logging;
 mod longform;
+pub mod models;
 mod output;
 mod paths;
 mod providers;
@@ -26,10 +27,11 @@ pub mod settings;
 
 use std::process::ExitCode;
 
+use anyhow::Context as _;
 use clap::Parser;
 use hece_providers::{ApiKey, KeyringStore, SecretStore};
 
-use crate::cli::{Cli, Command, HistoryArgs, KeyCommand};
+use crate::cli::{Cli, Command, HistoryArgs, KeyCommand, ModelCommand};
 use crate::config::{Config, ConfigError};
 
 /// Some files failed (the report was still printed).
@@ -160,6 +162,49 @@ fn key(command: &KeyCommand) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn model(command: &ModelCommand) -> anyhow::Result<()> {
+    let dir = models::models_dir()?;
+    match command {
+        ModelCommand::List => {
+            for m in models::CATALOG {
+                let state = if models::installed(m, &dir) {
+                    "installed"
+                } else {
+                    "not installed"
+                };
+                let mb = m.size() / 1_000_000;
+                output::line(&format!("{}  {}  ({mb} MB, {state})", m.id, m.name));
+            }
+        }
+        ModelCommand::Download { id } => {
+            let m = match id {
+                Some(id) => models::find(id)
+                    .with_context(|| format!("unknown model {id}; see `hece model list`"))?,
+                None => &models::CATALOG[0],
+            };
+            let mut shown = 0;
+            let path = runtime()?
+                .block_on(models::download(
+                    &models::client(),
+                    models::HUB,
+                    m,
+                    &dir,
+                    |p| {
+                        let percent = p.done * 100 / p.total.max(1);
+                        if percent >= shown + 5 {
+                            shown = percent;
+                            output::status(&format!("{} {percent}%", m.id));
+                        }
+                        std::ops::ControlFlow::Continue(())
+                    },
+                ))
+                .map_err(|e| anyhow::anyhow!("{e} ({})", e.code()))?;
+            output::status(&format!("downloaded to {}", path.display()));
+        }
+    }
+    Ok(())
+}
+
 /// Returns whether any bench file failed.
 fn run(cli: Cli) -> anyhow::Result<bool> {
     match cli.command {
@@ -193,6 +238,7 @@ fn run(cli: Cli) -> anyhow::Result<bool> {
             Ok(false)
         }
         Command::Key(command) => key(&command).map(|()| false),
+        Command::Model(command) => model(&command).map(|()| false),
         #[cfg(windows)]
         Command::Autostart { action } => {
             use crate::cli::Toggle;

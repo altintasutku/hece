@@ -2337,12 +2337,14 @@ dependencies = [
  "rpassword",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.21",
  "tokio",
  "toml 1.1.8+spec-1.1.0",
  "toml_edit 0.25.17+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
+ "wiremock",
 ]
 
 [[package]]

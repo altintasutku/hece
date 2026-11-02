@@ -85,6 +85,17 @@
       <p class="hint">Hold <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Space</kbd> and start talking</p>
       <p class="req">Windows, 64-bit. Local mode needs an NVIDIA GPU; without one, use a cloud provider.</p>
 
+      <!-- DEMO (#58): hidden until the video exists. To show it (docs/demo-video.md):
+           1. Add site/demo.mp4 (H.264 + AAC, faststart, < 10 MB) and site/demo-poster.jpg.
+           2. Remove the `hidden` attribute from the figure and uncomment the <video> inside it. -->
+      <figure class="demo" hidden>
+        <!--
+        <video src="demo.mp4" poster="demo-poster.jpg" width="1280" height="720"
+               muted autoplay loop playsinline preload="metadata"
+               aria-label="Hece demo: hold Ctrl+Shift+Space, speak, and the text is pasted into a mail draft, a chat and a code editor"></video>
+        -->
+      </figure>
+
       <div class="pillars">
         <div class="pillar"><h2><span class="dot" style="background:var(--green)"></span>Private by default</h2><p>Local Whisper runs on your machine. In local mode, audio never leaves your PC.</p></div>
         <div class="pillar"><h2><span class="dot" style="background:var(--blue)"></span>Speaks your language</h2><p>Multilingual Whisper, plus a vocabulary that spells your names and terms the way you do.</p></div>

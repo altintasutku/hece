@@ -82,6 +82,10 @@ kbd { display: inline-block; padding: 5px 10px; border-radius: 7px; font: 600 13
 .hint kbd { margin: 0 2px; }
 .req { margin-top: 10px; color: var(--ash); font-size: 13px; }
 
+/* Demo video slot (#58); the figure carries `hidden` until site/demo.mp4 exists. */
+.demo { max-width: 960px; margin: 56px auto 0; }
+.demo video { display: block; width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--hairline); background: var(--surface); }
+
 .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 72px; text-align: left; }
 .pillar { background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 22px 22px 24px; }
 .pillar h2, .pillar h3 { color: var(--ink); font-size: 17px; font-weight: 600; margin-bottom: 6px; }

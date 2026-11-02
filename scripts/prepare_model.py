@@ -53,7 +53,7 @@ BASE_FILES = {
     "vocabulary.json": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1",
     "tokenizer.json": "6d8cbd7cd0d8d5815e478dac67b85a26bbe77c1f5e0c6d76d1ce2abc0e5f21ca",
 }
-DEFAULT_OUT = Path(".cache/models") / f"large-v3-turkish-{REVISION[:7]}"
+DEFAULT_OUT = Path(".cache/models") / f"large-v3-turkish-{REVISION[:7]}-int8"
 
 
 def sha256(path: Path) -> str:
@@ -84,7 +84,7 @@ def main() -> int:
     )
     subprocess.run(
         [str(converter), "--model", str(src), "--output_dir", str(tmp),
-         "--quantization", "float16", "--copy_files", "preprocessor_config.json",
+         "--quantization", "int8_float16", "--copy_files", "preprocessor_config.json",
          "--low_cpu_mem_usage"],
         check=True,
     )

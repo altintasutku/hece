@@ -204,7 +204,9 @@ enum Command {
 /// A running capture.
 pub struct Capture {
     commands: mpsc::Sender<Command>,
-    thread: Option<JoinHandle<Result<Option<Recording>, AudioError>>>,
+    /// The recording, sent before the device is closed (closing can take a few hundred ms).
+    done: mpsc::Receiver<Result<Recording, AudioError>>,
+    thread: Option<JoinHandle<Result<(), AudioError>>>,
     shared: Arc<Shared>,
     rate: u32,
 }
@@ -225,6 +227,7 @@ impl Capture {
         let started = Instant::now();
         let (commands, command_rx) = mpsc::channel::<Command>();
         let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(Arc<Shared>, u32), AudioError>>(1);
+        let (done_tx, done) = mpsc::sync_channel(1);
         let device = cfg.device.clone();
         let post_roll = cfg.post_roll;
         let max = cfg.max_duration;
@@ -255,31 +258,34 @@ impl Capture {
                 };
                 let _ = ready_tx.send(Ok((Arc::clone(&shared), rate)));
                 let command = command_rx.recv().unwrap_or(Command::Cancel);
-                if matches!(command, Command::Stop) && !shared.limit_hit.load(Ordering::Relaxed) {
-                    std::thread::sleep(post_roll);
+                if matches!(command, Command::Stop) {
+                    if !shared.limit_hit.load(Ordering::Relaxed) {
+                        std::thread::sleep(post_roll);
+                    }
+                    // Callbacks until the stream is dropped are ignored from here on.
+                    let limit_reached = shared.limit_hit.swap(true, Ordering::Relaxed);
+                    let mono = std::mem::take(
+                        &mut *shared.mono.lock().unwrap_or_else(PoisonError::into_inner),
+                    );
+                    let first_audio_latency = *shared
+                        .latency
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    let recording = to_16k(&mono, rate).map(|samples| Recording {
+                        samples,
+                        first_audio_latency,
+                        limit_reached,
+                    });
+                    let _ = done_tx.send(recording);
                 }
                 drop(stream);
-                if matches!(command, Command::Cancel) {
-                    return Ok(None);
-                }
-                let mono = std::mem::take(
-                    &mut *shared.mono.lock().unwrap_or_else(PoisonError::into_inner),
-                );
-                let samples = to_16k(&mono, rate)?;
-                let first_audio_latency = *shared
-                    .latency
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner);
-                Ok(Some(Recording {
-                    samples,
-                    first_audio_latency,
-                    limit_reached: shared.limit_hit.load(Ordering::Relaxed),
-                }))
+                Ok(())
             })
             .map_err(|_| AudioError::Thread)?;
         match ready_rx.recv() {
             Ok(Ok((shared, rate))) => Ok(Self {
                 commands,
+                done,
                 thread: Some(thread),
                 shared,
                 rate,
@@ -313,11 +319,13 @@ impl Capture {
         mono.get(start..).map(<[f32]>::to_vec).unwrap_or_default()
     }
 
-    /// Stops after the post-roll, closes the device and returns the 16 kHz mono recording.
-    /// Blocks for the post-roll and resampling; call it from a blocking context.
+    /// Stops after the post-roll and returns the 16 kHz mono recording; the device closes in
+    /// the background. Blocks for the post-roll and resampling; call it from a blocking context.
     pub fn stop(mut self) -> Result<Recording, AudioError> {
         let _ = self.commands.send(Command::Stop);
-        self.join()?.ok_or(AudioError::Thread)
+        // Detached: the capture thread only has the device left to close.
+        self.thread.take();
+        self.done.recv().map_err(|_| AudioError::Thread)?
     }
 
     /// Closes the device and discards the audio.
@@ -328,7 +336,7 @@ impl Capture {
         }
     }
 
-    fn join(&mut self) -> Result<Option<Recording>, AudioError> {
+    fn join(&mut self) -> Result<(), AudioError> {
         let thread = self.thread.take().ok_or(AudioError::Thread)?;
         thread.join().map_err(|_| AudioError::Thread)?
     }

@@ -159,6 +159,7 @@ fn transcribe_req(samples: &[i16]) -> Request {
         prompt_prefix: String::new(),
         prompt_tokens: 0,
         vad: true,
+        beam_size: None,
         audio: AudioB64::encode(samples),
     })
 }

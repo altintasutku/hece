@@ -99,6 +99,9 @@ pub struct BenchArgs {
     /// 30 s) and join the chunk transcripts, to compare against whole-file transcription.
     #[arg(long, requires = "long")]
     pub chunked: bool,
+    /// Beam width (1 = greedy; default: the engine's 5).
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=10))]
+    pub beam_size: Option<u32>,
 }
 
 /// Which provider transcribes, shared by `dictate` and `run`. Without `--api-base` the local

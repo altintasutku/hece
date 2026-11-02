@@ -25,7 +25,7 @@ allow_cloud_fallback = false   # a local provider may fall back to a cloud one o
 
 [provider]
 kind = "local"             # local | openai | deepgram
-model_dir = 'C:\path\to\large-v3-turkish-ec03ccf'      # scripts/prepare_model.py output
+model_dir = 'C:\path\to\large-v3-turkish-ec03ccf-int8' # scripts/prepare_model.py output
 # engine = 'C:\path\to\hece-engine.exe'                 # default: next to hece.exe
 
 # OpenAI-compatible example (OpenAI, Groq, speaches, whisper.cpp server):

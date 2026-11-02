@@ -131,6 +131,9 @@ pub struct TranscribeRequest {
     pub prompt_tokens: usize,
     /// Whether to run voice activity detection.
     pub vad: bool,
+    /// Beam width; `None` keeps the engine default (5). 1 is greedy decoding, much faster.
+    #[serde(default)]
+    pub beam_size: Option<u32>,
     /// The audio to transcribe.
     pub audio: AudioB64,
 }
@@ -149,6 +152,7 @@ impl std::fmt::Debug for TranscribeRequest {
             .field("prompt_prefix_chars", &self.prompt_prefix.chars().count())
             .field("prompt_tokens", &self.prompt_tokens)
             .field("vad", &self.vad)
+            .field("beam_size", &self.beam_size)
             .field("audio", &self.audio)
             .finish()
     }
@@ -260,6 +264,7 @@ mod tests {
             prompt_prefix: "Vocabulary: ".to_owned(),
             prompt_tokens: 64,
             vad: true,
+            beam_size: Some(1),
             audio: AudioB64::encode(&[1, 2, 3]),
         }
     }

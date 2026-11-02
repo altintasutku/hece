@@ -141,6 +141,8 @@ pub struct EngineConfig {
     /// A connection idle for longer than this is replaced before the next request, so the
     /// request never lands on one the worker is about to close (default 25 s).
     pub reconnect_after: Duration,
+    /// Beam width sent with every request; `None` keeps the engine default.
+    pub beam_size: Option<u32>,
 }
 
 impl EngineConfig {
@@ -168,6 +170,7 @@ impl EngineConfig {
             connect_timeout: Duration::from_secs(20),
             base_timeout: Duration::from_secs(120),
             reconnect_after: CONN_IDLE_TIMEOUT.saturating_sub(RECONNECT_MARGIN),
+            beam_size: None,
         })
     }
 }
@@ -386,6 +389,7 @@ impl EngineClient {
             prompt_prefix: prompt_prefix.to_owned(),
             prompt_tokens,
             vad: true,
+            beam_size: self.cfg.beam_size,
             audio: AudioB64::encode(audio),
         });
         // One extra second per ten seconds of audio.

@@ -98,7 +98,7 @@ struct Form {
     cleanup: bool,
 }
 
-async fn read_form(mut multipart: Multipart) -> Result<Form, Response> {
+async fn read_form(mut multipart: Multipart) -> Result<Form, Box<Response>> {
     let mut form = Form::default();
     loop {
         let field = match multipart.next_field().await {
@@ -111,27 +111,27 @@ async fn read_form(mut multipart: Multipart) -> Result<Form, Response> {
                 } else {
                     "bad_multipart"
                 };
-                return Err(error(status, code, &e.body_text()));
+                return Err(Box::new(error(status, code, &e.body_text())));
             }
         };
         let name = field.name().unwrap_or_default().to_owned();
         if name == "file" {
             let bytes = field.bytes().await.map_err(|e| {
-                error(
+                Box::new(error(
                     e.status(),
                     "upload_too_large",
                     "the upload is too large or broken",
-                )
+                ))
             })?;
             form.file = Some(bytes.to_vec());
             continue;
         }
         let Ok(value) = field.text().await else {
-            return Err(error(
+            return Err(Box::new(error(
                 StatusCode::BAD_REQUEST,
                 "bad_multipart",
                 "unreadable field",
-            ));
+            )));
         };
         let value = Some(value.trim().to_owned()).filter(|v| !v.is_empty());
         match name.as_str() {
@@ -172,7 +172,7 @@ async fn transcriptions(
     }
     let form = match read_form(multipart).await {
         Ok(form) => form,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let Some(file) = form.file else {
         return error(

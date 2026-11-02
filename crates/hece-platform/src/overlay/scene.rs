@@ -5,9 +5,10 @@ use std::time::Duration;
 
 use tiny_skia::{
     Color, FillRule, GradientStop, Paint, PathBuilder, Pixmap, Point, RadialGradient, SpreadMode,
-    Stroke, Transform,
+    Transform,
 };
 
+use super::raster::{disc, line};
 use super::sphere::Sphere;
 use super::{Meter, Outcome, Phase, Voice};
 
@@ -263,10 +264,8 @@ impl Scene {
         );
         let base = mix(calm, VIOLET, wt.speak);
         let hue_speed = 60.0 * (1.0 - wt.work) + 30.0 * wt.work;
-        let stroke = Stroke {
-            width: 0.75,
-            ..Stroke::default()
-        };
+        // The prototype's 0.75 px lines: a one-pixel line at matching opacity.
+        let thin = (0.75 * scale).min(1.0);
         for &(a, b) in &self.sphere.edges {
             let (p, q) = (&points[a], &points[b]);
             let (va, vb) = (self.sphere.vertices[a], self.sphere.vertices[b]);
@@ -278,23 +277,27 @@ impl Scene {
                 shade = mix(shade, tint, exit_k);
             }
             let depth = f32::midpoint(f32::midpoint(p.z, q.z) / 40.0, 1.0);
-            let alpha = (0.18 + 0.5 * depth + 0.35 * wave).min(0.95) * fade;
-            let mut path = PathBuilder::new();
-            path.move_to(p.x, p.y);
-            path.line_to(q.x, q.y);
-            if let Some(path) = path.finish() {
-                pixmap.stroke_path(&path, &solid(shade, alpha), &stroke, transform, None);
-            }
+            let alpha = (0.18 + 0.5 * depth + 0.35 * wave).min(0.95) * fade * thin;
+            line(
+                pixmap,
+                (p.x * scale, p.y * scale),
+                (q.x * scale, q.y * scale),
+                shade,
+                alpha,
+            );
         }
         for (p, v) in points.iter().zip(&self.sphere.vertices) {
             if p.z < 0.0 || p.wave < 0.15 {
                 continue;
             }
             let shade = hsl(v[1].atan2(v[0]).to_degrees() + hue_speed * secs, 1.0, 0.7);
-            if let Some(dot) = PathBuilder::from_circle(p.x, p.y, 1.0 + 1.5 * p.wave) {
-                let paint = solid(shade, p.wave.min(1.0) * fade);
-                pixmap.fill_path(&dot, &paint, FillRule::Winding, transform, None);
-            }
+            disc(
+                pixmap,
+                (p.x * scale, p.y * scale),
+                (1.0 + 1.5 * p.wave) * scale,
+                shade,
+                p.wave.min(1.0) * fade,
+            );
         }
         self.draw_core(pixmap, transform, secs, entry, exit_k, tint, base);
     }

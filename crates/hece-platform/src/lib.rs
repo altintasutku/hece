@@ -9,9 +9,9 @@ mod windows;
 
 #[cfg(windows)]
 pub use windows::{
-    CANCEL_SHORTCUT, ControlListener, ControlRequest, Desktop, Inserted, RECORD_SHORTCUT, Window,
-    autostart_enabled, control_request, copy, disable_autostart, enable_autostart, focused_window,
-    insert, notify, open, pipe_server_is_current_user,
+    CANCEL_SHORTCUT, ControlListener, ControlRequest, Desktop, Inserted, Overlay, RECORD_SHORTCUT,
+    Window, autostart_enabled, control_request, copy, disable_autostart, enable_autostart,
+    focused_window, insert, notify, open, pipe_server_is_current_user,
 };
 
 /// Which global shortcut fired.
@@ -65,6 +65,9 @@ pub enum PlatformError {
     /// The paste keystroke could not be sent.
     #[error("the paste keystroke could not be sent")]
     Paste,
+    /// The recording overlay window could not be created.
+    #[error("the recording overlay could not be shown")]
+    Overlay,
 }
 
 impl PlatformError {
@@ -82,6 +85,7 @@ impl PlatformError {
             Self::NotRunning => "not_running",
             Self::ForeignPipe => "foreign_pipe",
             Self::Autostart => "autostart_failed",
+            Self::Overlay => "overlay_failed",
         }
     }
 }

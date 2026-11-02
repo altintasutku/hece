@@ -2,6 +2,7 @@
 //! the daemon, a level meter fed with the capture RMS, and drawing into a pixmap.
 
 mod meter;
+mod raster;
 mod scene;
 mod sphere;
 

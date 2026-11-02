@@ -11,7 +11,7 @@ $hece = Join-Path $target 'hece.exe'
 if (Test-Path $hece) { & $hece autostart off }
 # Only this session's copies: another signed-in user's Hece is theirs (and not ours to stop).
 $session = (Get-Process -Id $PID).SessionId
-Get-Process hecew, hece, hece-engine -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session | Stop-Process -Force
+Get-Process hecew, hece, hece-engine, hece-settings -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session | Stop-Process -Force
 Remove-Item -Force (Join-Path ([Environment]::GetFolderPath('Programs')) 'Hece.lnk') -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force $target -ErrorAction SilentlyContinue
 if ($Purge) {

@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -17,6 +17,7 @@ use hece_platform::{
     CANCEL_SHORTCUT, ControlListener, ControlRequest, Desktop, DesktopEvent, HotkeyEvent, Inserted,
     MenuAction, RECORD_SHORTCUT, Shortcut, TrayState, Window,
 };
+use hece_providers::engine_client::EngineClient;
 use hece_providers::{Cleaner, FallbackNotice, ProviderError, ProviderRequest, Providers};
 
 use crate::longform::{self, Params};
@@ -26,7 +27,7 @@ use tokio::task::JoinHandle;
 use crate::config::{Config, RecordMode};
 use crate::history::{self, Entry, History};
 use crate::output;
-use crate::providers::setup;
+use crate::providers::{Setup, setup};
 
 /// Recordings shorter than this (0.3 s at 16 kHz) count as "nothing heard".
 const MIN_SAMPLES: usize = 4_800;
@@ -136,6 +137,8 @@ async fn capture(
 
 struct Daemon {
     providers: Arc<Providers>,
+    /// The local engine client, if a provider uses it (prewarm, shutdown).
+    engine: Option<Arc<EngineClient>>,
     cleaner: Option<Arc<Cleaner>>,
     vocabulary: Option<Arc<Vocabulary>>,
     language: Option<String>,
@@ -219,7 +222,7 @@ impl Daemon {
         }
     }
 
-    async fn control(&self, request: ControlRequest) -> Option<Input> {
+    async fn control(&mut self, request: ControlRequest) -> Option<Input> {
         match request.command.as_str() {
             "status" => {
                 let status = self.status();
@@ -235,11 +238,56 @@ impl Daemon {
                 request.reply("ok").await;
                 Some(Input::Cancel)
             }
+            "reload" => {
+                let answer = self.reload();
+                request.reply(answer).await;
+                None
+            }
             _ => {
                 request.reply("unknown command").await;
                 None
             }
         }
+    }
+
+    /// Re-reads the config file and swaps providers, vocabulary, cleanup, mode and history.
+    /// The API keeps its settings until restart. Refused while a dictation is under way.
+    fn reload(&mut self) -> &'static str {
+        if self.recorder.is_recording() || self.pending() > 0 {
+            return "busy";
+        }
+        let loaded = Config::load(&self.config_file)
+            .map_err(anyhow::Error::from)
+            .and_then(|cfg| setup(&cfg).map(|s| (cfg, s)));
+        match loaded {
+            Ok((cfg, setup)) => {
+                self.configure(&cfg, setup);
+                tracing::info!("config reloaded");
+                "ok"
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "config reload failed");
+                "invalid_config"
+            }
+        }
+    }
+
+    /// Applies a loaded config. The engine worker keeps its model, so a new client just
+    /// prewarms against it.
+    fn configure(&mut self, cfg: &Config, setup: Setup) {
+        self.providers = setup.providers;
+        self.cleaner = setup.cleaner;
+        self.vocabulary = setup.vocabulary;
+        self.language = setup.language;
+        self.prompt_tokens = setup.prompt_tokens;
+        self.mode = mode(cfg);
+        self.recorder = Recorder::new(self.mode, MIN_SAMPLES);
+        self.capture_cfg = capture_config(cfg);
+        self.history = open_history(cfg, &self.state_dir);
+        if let Some(engine) = &setup.engine {
+            prewarm(Arc::clone(engine));
+        }
+        self.engine = setup.engine;
     }
 
     async fn menu(&mut self, action: MenuAction) -> Option<Input> {
@@ -249,9 +297,17 @@ impl Daemon {
                 self.repaste(action == MenuAction::RepasteRaw).await;
             }
             MenuAction::Settings => {
-                let opened = std::process::Command::new("notepad.exe")
-                    .arg(&self.config_file)
-                    .spawn();
+                // The settings window ships next to hece.exe; without it, the file in Notepad.
+                let app = std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| exe.parent().map(|d| d.join("hece-settings.exe")))
+                    .filter(|p| p.is_file());
+                let opened = match app {
+                    Some(app) => std::process::Command::new(app).spawn(),
+                    None => std::process::Command::new("notepad.exe")
+                        .arg(&self.config_file)
+                        .spawn(),
+                };
                 if opened.is_err() {
                     self.fail("Could not open the config file.");
                 }
@@ -606,8 +662,8 @@ async fn start_api(
 
 /// The history, with retention applied now: it must hold even when nobody dictates, and turning
 /// history off removes the old file.
-fn open_history(cfg: &Config, paths: &Paths) -> Option<History> {
-    let history = History::new(&paths.state_dir, &cfg.history);
+fn open_history(cfg: &Config, state_dir: &Path) -> Option<History> {
+    let history = History::new(state_dir, &cfg.history);
     let tidied = if cfg.history.enabled {
         history.prune()
     } else {
@@ -617,6 +673,35 @@ fn open_history(cfg: &Config, paths: &Paths) -> Option<History> {
         tracing::warn!(kind = ?e.kind(), "history cleanup failed");
     }
     cfg.history.enabled.then_some(history)
+}
+
+fn mode(cfg: &Config) -> Mode {
+    match cfg.recording.mode {
+        RecordMode::Hold => Mode::PushToTalk,
+        RecordMode::Toggle => Mode::Toggle,
+    }
+}
+
+fn capture_config(cfg: &Config) -> CaptureConfig {
+    CaptureConfig {
+        device: cfg.recording.device.clone(),
+        max_duration: Duration::from_secs(cfg.recording.max_seconds),
+        ..CaptureConfig::default()
+    }
+}
+
+/// Loads the local model in the background so the first dictation does not wait for it.
+fn prewarm(engine: Arc<EngineClient>) {
+    tokio::spawn(async move {
+        output::status("loading the local model…");
+        match engine.prewarm().await {
+            Ok(()) => output::status("model loaded"),
+            Err(e) => toast(&format!(
+                "The local model could not be loaded: {e} ({})",
+                e.code()
+            )),
+        }
+    });
 }
 
 /// Runs the daemon until Ctrl+C or "Quit" in the tray.
@@ -647,21 +732,14 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
             }
         }
     });
-    if let Some(engine) = setup.engine.clone() {
-        tokio::spawn(async move {
-            output::status("loading the local model…");
-            match engine.prewarm().await {
-                Ok(()) => output::status("model loaded"),
-                Err(e) => toast(&format!(
-                    "The local model could not be loaded: {e} ({})",
-                    e.code()
-                )),
-            }
-        });
+    if let Some(engine) = &setup.engine {
+        prewarm(Arc::clone(engine));
     }
-    let (mode, how) = match cfg.recording.mode {
-        RecordMode::Hold => (Mode::PushToTalk, "hold"),
-        RecordMode::Toggle => (Mode::Toggle, "press"),
+    let mode = mode(&cfg);
+    let how = if mode == Mode::PushToTalk {
+        "hold"
+    } else {
+        "press"
     };
     output::status(&format!(
         "ready: {how} {RECORD_SHORTCUT} to dictate, {CANCEL_SHORTCUT} cancels, Ctrl+C quits"
@@ -669,17 +747,14 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
     tracing::info!(mode = how, "daemon ready");
     let mut daemon = Daemon {
         providers: setup.providers,
+        engine: setup.engine,
         cleaner: setup.cleaner,
         vocabulary: setup.vocabulary,
         language: setup.language,
         prompt_tokens: setup.prompt_tokens,
         mode,
-        capture_cfg: CaptureConfig {
-            device: cfg.recording.device.clone(),
-            max_duration: Duration::from_secs(cfg.recording.max_seconds),
-            ..CaptureConfig::default()
-        },
-        history: open_history(&cfg, &paths),
+        capture_cfg: capture_config(&cfg),
+        history: open_history(&cfg, &paths.state_dir),
         config_file: paths.config_file,
         state_dir: paths.state_dir,
         desktop,
@@ -711,7 +786,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         daemon.refresh_tray();
     }
     tracing::info!("daemon stopping");
-    if let Some(engine) = setup.engine {
+    if let Some(engine) = daemon.engine {
         let _ = engine.shutdown().await;
     }
     Ok(())

@@ -49,7 +49,8 @@ There is one accent, used sparingly: never as a background block, never for deco
   at run time.
 - **Row:** label (600) above one helper line (`--muted`), control on the right, a hairline above it, and a
   hairline below the last row. One row is one config key. Never put rows inside cards.
-- **Select / text input / button:** 1 px `--ink` border, `--field` fill, 7×10 px padding, square. Hover
+- **Select / text input / button:** 1 px `--ink` border, `--field` fill, 7×10 px padding, square, selects at
+  most 300 px wide (long device names are cut with an ellipsis). Hover
   inverts (ink fill, paper text). Focus shows a 2 px `--accent` outline offset by 2 px. Disabled uses
   `--hairline` border and `--muted` text.
 - **Toggle:** a square checkbox styled as a 1 px box with an ink check. No pill switches.

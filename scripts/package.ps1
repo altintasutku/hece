@@ -1,4 +1,5 @@
-# Builds a Windows release zip: hece.exe, hecew.exe, hece-engine.exe and the install scripts.
+# Builds a Windows release zip: hece.exe, hecew.exe, hece-engine.exe, hece-settings.exe and the
+# install scripts.
 #
 #   powershell -File scripts/package.ps1 [-BundleCuda]
 #
@@ -13,6 +14,13 @@ Set-Location $root
 
 & powershell -NoProfile -File scripts\build-engine.ps1
 if ($LASTEXITCODE -ne 0) { throw 'build failed' }
+# The settings window (Tauri; needs bun from mise.toml).
+Push-Location apps\settings
+& bun install --frozen-lockfile
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw 'bun install failed' }
+& bunx tauri build --no-bundle
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw 'settings build failed' }
+Pop-Location
 
 $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
 $name = "hece-$version-windows-x64"
@@ -20,7 +28,7 @@ $stage = Join-Path $root "target\dist\$name"
 Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $stage | Out-Null
 
-foreach ($exe in 'hece.exe', 'hecew.exe', 'hece-engine.exe') {
+foreach ($exe in 'hece.exe', 'hecew.exe', 'hece-engine.exe', 'hece-settings.exe') {
     Copy-Item "target\release\$exe" $stage
 }
 Copy-Item scripts\windows\install.ps1, scripts\windows\uninstall.ps1, scripts\prepare_model.py, scripts\prepare_model.py.lock $stage

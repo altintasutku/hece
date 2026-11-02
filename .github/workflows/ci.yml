@@ -25,6 +25,12 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     timeout-minutes: 30
     runs-on: ${{ matrix.os }}
+    env:
+      # The settings window is Windows-only (WebView2); Linux would need webkit2gtk.
+      EXCLUDE: ${{ matrix.os == 'ubuntu-latest' && '--exclude hece-settings' || '' }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       # Same toolchain as mise.toml, so a lint that passes locally passes here (Renovate bumps both).
@@ -38,9 +44,9 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace $EXCLUDE --all-targets --locked -- -D warnings
       - name: Test
-        run: cargo test --workspace --locked
+        run: cargo test --workspace $EXCLUDE --locked
 
   # Known vulnerabilities (RustSec) in Cargo.lock. Fails the PR so an advisory gets a decision.
   audit:
@@ -53,3 +59,19 @@ jobs:
           tool: cargo-audit
       - name: Audit
         run: cargo audit
+
+  # Settings app frontend: types, Svelte warnings and a production build.
+  settings:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/settings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run build

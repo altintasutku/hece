@@ -3,12 +3,16 @@
   import Row from "./Row.svelte";
   import { savedNote } from "./strings";
 
+  const DEFAULT_HELP = "Windows Kimlik Bilgisi Yöneticisi'nde saklanır, burada gösterilmez";
+
   interface Props {
     section: string;
     stored: boolean;
     onchange: () => void;
+    /** Where to get the key; the default only says where it is kept. */
+    help?: string;
   }
-  let { section, stored, onchange }: Props = $props();
+  let { section, stored, onchange, help = DEFAULT_HELP }: Props = $props();
 
   let editing = $state(false);
   let secret = $state("");
@@ -26,7 +30,7 @@
   }
 </script>
 
-<Row label="API anahtarı" help="Windows Kimlik Bilgisi Yöneticisi'nde saklanır, burada gösterilmez" {note}>
+<Row label="API anahtarı" {help} {note}>
   {#if editing}
     <input type="password" autocomplete="off" placeholder="Anahtarı yapıştır" bind:value={secret}
       onkeydown={(e) => e.key === "Enter" && secret && run(() => storeKey(section, secret))} />

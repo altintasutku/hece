@@ -26,6 +26,7 @@ License: MIT
 3. Open **Hece Ayarlar** and pick the downloaded model, or a cloud provider and its key (stored in the
    Windows Credential Manager). It writes `config.toml` (`hece config` prints the path) and keeps
    your comments. If Hece starts before this is set, it opens the settings window itself.
+   No NVIDIA GPU: [docs/cloud-providers.md](docs/cloud-providers.md) sets up Groq, OpenAI or Deepgram step by step.
 4. Start Hece from the Start menu. Hold **Ctrl+Shift+Space** and speak; release to insert.
    **Ctrl+Shift+Backspace** cancels. The tray icon (Windows may tuck it under "show hidden icons")
    shows the state and has the menu.

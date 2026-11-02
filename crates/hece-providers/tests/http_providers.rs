@@ -360,3 +360,81 @@ async fn deepgram_missing_key_fails_before_sending() {
         .unwrap_err();
     assert_eq!(e.code(), "provider_key_missing");
 }
+
+// ---------- Cloud error paths and auto-detect ----------
+
+#[tokio::test]
+async fn auto_detect_omits_the_language_field() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/audio/transcriptions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"text": "ok"})))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/listen"))
+        .and(query_param("detect_language", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "results": {"channels": [{"alternatives": [{"transcript": "ok"}]}]}
+        })))
+        .mount(&server)
+        .await;
+    let oa = openai(&server, None, false);
+    let (key, _) = key_for("deepgram", "dg");
+    let dg = deepgram(&server, key);
+    // Unset and blank both mean auto-detect; an empty field makes Groq/OpenAI answer 400.
+    for language in [None, Some(""), Some("  ")] {
+        oa.transcribe(request(language, None)).await.unwrap();
+        dg.transcribe(request(language, None)).await.unwrap();
+    }
+    for r in server.received_requests().await.unwrap() {
+        assert!(
+            !r.body.windows(15).any(|w| w == b"name=\"language\""),
+            "multipart must not carry a language field"
+        );
+        assert!(r.url.query_pairs().all(|(k, _)| k != "language"));
+    }
+}
+
+#[tokio::test]
+async fn http_statuses_map_to_stable_codes() {
+    for (status, code) in [
+        (403, "provider_unauthorized"),
+        (413, "audio_too_long"),
+        (400, "provider_rejected"),
+        (502, "provider_server_error"),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status))
+            .mount(&server)
+            .await;
+        let e = openai(&server, None, false)
+            .transcribe(request(None, None))
+            .await
+            .unwrap_err();
+        assert_eq!(e.code(), code, "status {status}");
+    }
+}
+
+#[tokio::test]
+async fn unreachable_provider_is_a_network_error() {
+    // A port nothing listens on: connection refused, as when offline.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let cfg = OpenAiConfig::new(
+        "groq",
+        &format!("http://127.0.0.1:{port}/v1"),
+        "whisper-large-v3",
+    );
+    let e = OpenAiProvider::new(cfg, None)
+        .unwrap()
+        .transcribe(request(None, None))
+        .await
+        .unwrap_err();
+    assert_eq!(e.code(), "provider_network");
+    assert_eq!(e.to_string(), "groq: network error");
+}

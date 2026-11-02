@@ -23,11 +23,13 @@ foreach ($file in $shipped) {
 }
 
 $shell = New-Object -ComObject WScript.Shell
-$link = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'Hece.lnk'))
-$link.TargetPath = Join-Path $target 'hecew.exe'
-$link.WorkingDirectory = $target
-$link.Description = 'Hece voice dictation'
-$link.Save()
+foreach ($entry in @(('Hece.lnk', 'hecew.exe', 'Hece voice dictation'), ('Hece Ayarlar.lnk', 'hece-settings.exe', 'Hece settings'))) {
+    $link = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) $entry[0]))
+    $link.TargetPath = Join-Path $target $entry[1]
+    $link.WorkingDirectory = $target
+    $link.Description = $entry[2]
+    $link.Save()
+}
 
 $hece = Join-Path $target 'hece.exe'
 if (-not $NoAutostart) { & $hece autostart on }
@@ -39,4 +41,4 @@ if (-not (Test-Path (Join-Path $target 'cublas64_13.dll')) -and -not $cudaOnPath
 }
 Write-Output "Installed to $target"
 $models = Join-Path $env:LOCALAPPDATA 'hece\models\large-v3-turkish'
-Write-Output "Next: prepare the model (uv run `"$target\prepare_model.py`" `"$models`"), set [provider] model_dir = '$models' in $config, then start Hece from the Start menu."
+Write-Output "Next: prepare the model (uv run `"$target\prepare_model.py`" `"$models`"), set the model folder in Hece Ayarlar (or [provider] model_dir = '$models' in $config), then start Hece from the Start menu."

@@ -298,17 +298,12 @@ impl Daemon {
             }
             MenuAction::Settings => {
                 // The settings window ships next to hece.exe; without it, the file in Notepad.
-                let app = std::env::current_exe()
-                    .ok()
-                    .and_then(|exe| exe.parent().map(|d| d.join("hece-settings.exe")))
-                    .filter(|p| p.is_file());
-                let opened = match app {
-                    Some(app) => std::process::Command::new(app).spawn(),
-                    None => std::process::Command::new("notepad.exe")
+                let opened = crate::open_settings()
+                    || std::process::Command::new("notepad.exe")
                         .arg(&self.config_file)
-                        .spawn(),
-                };
-                if opened.is_err() {
+                        .spawn()
+                        .is_ok();
+                if !opened {
                     self.fail("Could not open the config file.");
                 }
             }

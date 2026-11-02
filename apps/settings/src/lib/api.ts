@@ -17,3 +17,4 @@ export const setValues = (changes: Record<string, Value>) => invoke<string>("set
 export const storeKey = (section: string, secret: string) =>
   invoke<string>("store_key", { section, secret });
 export const deleteKey = (section: string) => invoke<string>("delete_key", { section });
+export const startDaemon = () => invoke<void>("start_daemon");

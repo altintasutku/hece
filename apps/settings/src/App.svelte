@@ -42,6 +42,8 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
+    // A shortcut capture field took this key.
+    if (e.defaultPrevented) return;
     if (e.key === "Escape" || (e.ctrlKey && e.key.toLowerCase() === "w")) window.close();
   }
 </script>

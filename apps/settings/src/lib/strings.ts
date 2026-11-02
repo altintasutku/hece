@@ -126,9 +126,31 @@ const en = {
 
   shortcuts: {
     record: "Record",
-    recordHelp: "A shortcut Windows does not use; cannot be changed yet",
+    recordHelp: "Starts a dictation in any app",
     cancel: "Cancel",
     cancelHelp: "Cancels the running recording or the latest dictation",
+    change: "Change",
+    reset: "Reset",
+    press: "Press the new shortcut",
+    pressHelp: "Esc keeps the current one",
+    changeLabel: (action: string) => `Change the ${action.toLowerCase()} shortcut`,
+    unsupportedKey: "Use a letter, digit, F-key, Space or a navigation key (hotkey_invalid)",
+    inUse: (combo: string) => `${combo} is used by another app; kept the previous one (hotkey_in_use)`,
+    hotkeyError(message: string): string {
+      const code = /\((hotkey_\w+)\)$/.exec(message)?.[1];
+      switch (code) {
+        case "hotkey_no_modifier":
+          return "Add Ctrl, Alt or Win; only F13–F24 work alone (hotkey_no_modifier)";
+        case "hotkey_reserved":
+          return "Windows keeps this one, or Hece pastes with it (hotkey_reserved)";
+        case "hotkey_duplicate":
+          return "Record and cancel need different shortcuts (hotkey_duplicate)";
+        case "hotkey_invalid":
+          return "Not a usable shortcut (hotkey_invalid)";
+        default:
+          return message;
+      }
+    },
     mode: "Recording mode",
     modeHelp: "Hold: ends when you let go. Toggle: ends on the second press.",
     hold: "Hold",
@@ -257,9 +279,31 @@ const tr: Strings = {
 
   shortcuts: {
     record: "Kaydet",
-    recordHelp: "Windows'un kullanmadığı bir kısayol; şimdilik değiştirilemez",
+    recordHelp: "Her uygulamada dikteyi başlatır",
     cancel: "Vazgeç",
     cancelHelp: "Süren kaydı ya da son dikteyi iptal eder",
+    change: "Değiştir",
+    reset: "Sıfırla",
+    press: "Yeni kısayola bas",
+    pressHelp: "Esc ile mevcut kısayol kalır",
+    changeLabel: (action) => `${action} kısayolunu değiştir`,
+    unsupportedKey: "Harf, rakam, F tuşu, Space ya da bir yön tuşu kullan (hotkey_invalid)",
+    inUse: (combo) => `${combo} başka bir uygulamada kullanılıyor; öncekisi kaldı (hotkey_in_use)`,
+    hotkeyError(message) {
+      const code = /\((hotkey_\w+)\)$/.exec(message)?.[1];
+      switch (code) {
+        case "hotkey_no_modifier":
+          return "Ctrl, Alt ya da Win ekle; tek başına yalnız F13–F24 olur (hotkey_no_modifier)";
+        case "hotkey_reserved":
+          return "Bunu Windows kullanıyor ya da Hece onunla yapıştırıyor (hotkey_reserved)";
+        case "hotkey_duplicate":
+          return "Kaydet ve vazgeç için farklı kısayollar gerekir (hotkey_duplicate)";
+        case "hotkey_invalid":
+          return "Kullanılabilir bir kısayol değil (hotkey_invalid)";
+        default:
+          return message;
+      }
+    },
     mode: "Kayıt biçimi",
     modeHelp: "Basılı tut: bırakınca biter. Bas-bas: ikinci basışta biter.",
     hold: "Basılı tut",

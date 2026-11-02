@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use hece_core::hotkey::{self, Hotkey};
 use hece_core::ipc::MAX_AUDIO_SAMPLES;
 use serde::Deserialize;
 
@@ -13,7 +14,9 @@ const MAX_SECONDS: u64 = (MAX_AUDIO_SAMPLES / 16_000) as u64;
 pub const TEMPLATE: &str = r#"# Hece configuration. Restart hece after editing.
 
 [recording]
-mode = "hold"              # hold: hold Ctrl+Shift+Space while talking; toggle: press to start/stop
+mode = "hold"              # hold: hold the record shortcut while talking; toggle: press to start/stop
+hotkey = "Ctrl+Shift+Space"            # record shortcut: Ctrl, Alt, Shift, Win + a key; F13-F24 work alone
+cancel_hotkey = "Ctrl+Shift+Backspace" # cancels the recording or the latest dictation
 # device = "Microphone (...)" # a name from `hece devices`; default: the system microphone
 max_seconds = 600          # at most 660
 
@@ -90,6 +93,8 @@ pub struct Recording {
     pub mode: RecordMode,
     pub device: Option<String>,
     pub max_seconds: u64,
+    pub hotkey: String,
+    pub cancel_hotkey: String,
 }
 
 impl Default for Recording {
@@ -98,7 +103,27 @@ impl Default for Recording {
             mode: RecordMode::Hold,
             device: None,
             max_seconds: 600,
+            hotkey: hotkey::DEFAULT_RECORD.to_owned(),
+            cancel_hotkey: hotkey::DEFAULT_CANCEL.to_owned(),
         }
+    }
+}
+
+impl Recording {
+    /// The record and cancel shortcuts; errors name the field and end with a stable code.
+    pub fn hotkeys(&self) -> Result<(Hotkey, Hotkey), String> {
+        let parse = |field: &str, text: &str| {
+            text.parse::<Hotkey>()
+                .map_err(|e| format!("[recording] {field} {text:?} {e} ({})", e.code()))
+        };
+        let record = parse("hotkey", &self.hotkey)?;
+        let cancel = parse("cancel_hotkey", &self.cancel_hotkey)?;
+        if record == cancel {
+            return Err(
+                "[recording] hotkey and cancel_hotkey must differ (hotkey_duplicate)".to_owned(),
+            );
+        }
+        Ok((record, cancel))
     }
 }
 
@@ -378,6 +403,7 @@ impl Config {
         if !(1..=MAX_SECONDS).contains(&self.recording.max_seconds) {
             return Err(format!("[recording] max_seconds must be 1..={MAX_SECONDS}"));
         }
+        self.recording.hotkeys()?;
         if self.transcription.prompt_tokens > hece_core::MAX_PROMPT_TOKENS {
             return Err(format!(
                 "[transcription] prompt_tokens must be at most {}",
@@ -459,6 +485,21 @@ mod tests {
                 "{err}"
             );
         }
+    }
+
+    #[test]
+    fn hotkeys_default_and_validate() {
+        let cfg: Config = toml::from_str("").unwrap();
+        let (record, cancel) = cfg.recording.hotkeys().unwrap();
+        assert_eq!(record.to_string(), "Ctrl+Shift+Space");
+        assert_eq!(cancel.to_string(), "Ctrl+Shift+Backspace");
+        let err = Config::parse("[recording]\nhotkey = \"K\"\n").unwrap_err();
+        assert!(
+            err.starts_with("[recording] hotkey ") && err.ends_with("(hotkey_no_modifier)"),
+            "{err}"
+        );
+        let err = Config::parse("[recording]\ncancel_hotkey = \"ctrl+shift+space\"\n").unwrap_err();
+        assert!(err.ends_with("(hotkey_duplicate)"), "{err}");
     }
 
     #[test]

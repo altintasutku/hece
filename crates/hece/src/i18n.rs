@@ -28,6 +28,7 @@ pub(crate) enum Toast<'a> {
     InsertFailed,
     ModelNotLoaded(&'a dyn fmt::Display, &'a str),
     ApiNotStarted(u16),
+    HotkeyInUse(&'a str, &'a str),
     NeedsSetupTitle,
     NeedsSetup,
     NotStartedTitle,
@@ -77,6 +78,10 @@ impl Toast<'_> {
                 f,
                 "The local API did not start on port {port} (in use?); dictation still works."
             ),
+            Self::HotkeyInUse(shortcut, code) => write!(
+                f,
+                "{shortcut} is already used by another app; Hece keeps its previous shortcuts ({code})."
+            ),
             Self::NeedsSetupTitle => f.write_str("Hece needs setup"),
             Self::NeedsSetup => f.write_str(
                 "Hece Settings is open: pick a model or a cloud provider, then press Start.",
@@ -117,6 +122,10 @@ impl Toast<'_> {
                 f,
                 "Yerel API {port} portunda başlamadı (kullanımda mı?); dikte yine çalışır."
             ),
+            Self::HotkeyInUse(shortcut, code) => write!(
+                f,
+                "{shortcut} başka bir uygulamada kullanılıyor; Hece önceki kısayollarını koruyor ({code})."
+            ),
             Self::NeedsSetupTitle => f.write_str("Hece'nin kurulması gerekiyor"),
             Self::NeedsSetup => f.write_str(
                 "Hece Settings açık: bir model ya da bulut sağlayıcı seç, sonra Başlat'a bas.",
@@ -152,6 +161,7 @@ mod tests {
             Toast::NotInserted(&e, "code_x"),
             Toast::CleanupSkipped("code_x"),
             Toast::ModelNotLoaded(&e, "code_x"),
+            Toast::HotkeyInUse("Ctrl+K", "code_x"),
         ] {
             for lang in [Lang::En, Lang::Tr] {
                 let text = In(&toast, lang).to_string();

@@ -27,6 +27,8 @@ const KEYS: &[&str] = &[
     "recording.mode",
     "recording.device",
     "recording.max_seconds",
+    "recording.hotkey",
+    "recording.cancel_hotkey",
     "ui.overlay",
 ];
 

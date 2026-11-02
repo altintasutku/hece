@@ -1,6 +1,7 @@
 // Dev-only stand-in for the Tauri backend, so `bun run dev` renders in a plain browser for
 // screenshots. Loaded only when Vite serves the app outside Tauri; never part of the build.
-// `?daemon=not_running` shows the start banner, `?kind=openai` or `?kind=groq` the cloud rows.
+// `?daemon=not_running` shows the start banner, `?kind=openai` or `?kind=groq` the cloud rows,
+// `?hotkey=Alt+F13` a changed record shortcut, `?conflict=1` a shortcut another app owns.
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { Snapshot } from "./api";
 
@@ -20,6 +21,8 @@ const snap: Snapshot = {
     "recording.device": null,
     "recording.max_seconds": 600,
     "ui.overlay": true,
+    "recording.hotkey": query.get("hotkey"),
+    "recording.cancel_hotkey": null,
   },
   keys: { provider: query.get("kind") === "openai" },
   devices: ["Microphone (USB Audio Device)", "Headset Microphone (Wireless)"],
@@ -30,7 +33,13 @@ const snap: Snapshot = {
   daemon: query.get("daemon") ?? "idle",
 };
 
+let conflicts = query.get("conflict") === "1";
 mockIPC((cmd) => {
   if (cmd === "snapshot") return structuredClone(snap);
+  if (cmd === "set_values" && conflicts) {
+    // The first save is refused, the restore that follows succeeds.
+    conflicts = false;
+    return "hotkey_in_use";
+  }
   return "ok";
 });

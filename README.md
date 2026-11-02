@@ -58,6 +58,10 @@ plus the tools in `mise.toml`).
   the text stays in `hece history`.
 - Transcripts never enter Win+V clipboard history or the cloud clipboard.
 
+### Privacy
+
+- The only network call Hece makes on its own is a once-a-day check of GitHub's latest release (one GET, nothing about you is sent); turn it off with `[updates] check = false` or in the settings.
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, the quality gate, and PR expectations.

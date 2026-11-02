@@ -92,7 +92,7 @@
         {:else if current.id === "vocabulary"}
           <Vocabulary />
         {:else}
-          <About {snap} />
+          <About {snap} save={saveTo} />
         {/if}
       </div>
     {/if}

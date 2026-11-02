@@ -32,6 +32,9 @@ pub(crate) enum Toast<'a> {
     NeedsSetupTitle,
     NeedsSetup,
     NotStartedTitle,
+    /// A newer release exists (the version).
+    UpdateAvailable(&'a str),
+    ReleasePageFailed,
 }
 
 impl Toast<'_> {
@@ -87,6 +90,8 @@ impl Toast<'_> {
                 "Hece Settings is open: pick a model or a cloud provider, then press Start.",
             ),
             Self::NotStartedTitle => f.write_str("Hece could not start"),
+            Self::UpdateAvailable(version) => write!(f, "Hece {version} is available"),
+            Self::ReleasePageFailed => f.write_str("Could not open the release page."),
         }
     }
 
@@ -131,6 +136,8 @@ impl Toast<'_> {
                 "Hece Settings açık: bir model ya da bulut sağlayıcı seç, sonra Başlat'a bas.",
             ),
             Self::NotStartedTitle => f.write_str("Hece başlatılamadı"),
+            Self::UpdateAvailable(version) => write!(f, "Hece {version} indirilebilir"),
+            Self::ReleasePageFailed => f.write_str("Sürüm sayfası açılamadı."),
         }
     }
 }

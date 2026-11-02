@@ -55,12 +55,14 @@ pub fn menu_label(action: MenuAction, lang: Lang) -> &'static str {
         (Lang::En, MenuAction::Settings) => "Settings…",
         (Lang::En, MenuAction::Logs) => "Open log folder",
         (Lang::En, MenuAction::Quit) => "Quit Hece",
+        (Lang::En, MenuAction::Update) => "Update available",
         (Lang::Tr, MenuAction::Toggle) => "Kaydı başlat / bitir",
         (Lang::Tr, MenuAction::Repaste) => "Son dikteyi yapıştır",
         (Lang::Tr, MenuAction::RepasteRaw) => "Son ham metni yapıştır",
         (Lang::Tr, MenuAction::Settings) => "Ayarlar…",
         (Lang::Tr, MenuAction::Logs) => "Kayıt klasörünü aç",
         (Lang::Tr, MenuAction::Quit) => "Hece'den çık",
+        (Lang::Tr, MenuAction::Update) => "Yeni sürüm var",
     }
 }
 

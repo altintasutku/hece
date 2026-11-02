@@ -123,6 +123,8 @@ pub enum MenuAction {
     Logs,
     /// Quit the daemon.
     Quit,
+    /// Open the page of the newer release (shown once one is offered).
+    Update,
 }
 
 /// Input from the desktop thread.

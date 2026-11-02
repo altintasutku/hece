@@ -36,9 +36,12 @@ The first public release (v0.1.0) is being prepared. Windows only.
 - Soft sound cues when the microphone is live, when recording stops and when a dictation is
   cancelled or fails; the start cue is kept out of the transcript. Toggle in settings,
   `[feedback] volume` in the config.
-- Settings window (**Hece Ayarlar**) for the provider, model, shortcuts and options. It edits
+- Settings window (**Hece Settings**) for the provider, model, shortcuts and options. It edits
   `config.toml` without losing your comments and applies changes without a restart. It opens by
   itself on first run.
+- English interface (settings window, tray menu, notifications) with a Turkish translation that is
+  used when the Windows display language is Turkish.
+- The settings window shares the website's dark look (Gece).
 - Local OpenAI-compatible transcription API on `127.0.0.1`, off by default and protected by a
   token, so other apps can share the loaded model.
 - Command line: `hece run`, `status`, `toggle`, `history`, `repaste`, `key`, `autostart`,

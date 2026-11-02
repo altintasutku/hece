@@ -15,7 +15,10 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, MSG, PostThreadMessageW, TranslateMessage, WM_APP, WM_QUIT,
 };
 
-use crate::{DesktopEvent, HotkeyEvent, MenuAction, PlatformError, Shortcut, TrayState};
+use crate::{
+    DesktopEvent, HotkeyEvent, MenuAction, PlatformError, Shortcut, TrayState, menu_label,
+    tray_status, ui_language,
+};
 
 /// The record shortcut: not a Windows default and free next to apps that take Ctrl+Alt+Space
 /// (Claude desktop) or Win+Alt+Space (`PowerToys`); one hand can hold it.
@@ -27,13 +30,13 @@ pub const CANCEL_SHORTCUT: &str = "Ctrl+Shift+Backspace";
 const WM_TRAY_STATE: u32 = WM_APP + 1;
 const ICON_SIZE: u32 = 32;
 
-const MENU: [(MenuAction, &str); 6] = [
-    (MenuAction::Toggle, "Start / stop recording"),
-    (MenuAction::Repaste, "Paste last dictation"),
-    (MenuAction::RepasteRaw, "Paste last raw transcript"),
-    (MenuAction::Settings, "Settings…"),
-    (MenuAction::Logs, "Open log folder"),
-    (MenuAction::Quit, "Quit Hece"),
+const MENU: [MenuAction; 6] = [
+    MenuAction::Toggle,
+    MenuAction::Repaste,
+    MenuAction::RepasteRaw,
+    MenuAction::Settings,
+    MenuAction::Logs,
+    MenuAction::Quit,
 ];
 
 /// Hotkeys and the tray icon; dropping this removes both.
@@ -93,14 +96,10 @@ fn state_from(value: usize) -> TrayState {
 }
 
 fn tooltip(state: TrayState) -> String {
-    let what = match state {
-        TrayState::Idle => format!("ready ({RECORD_SHORTCUT})"),
-        TrayState::Recording => "recording".to_owned(),
-        TrayState::Processing => "transcribing".to_owned(),
-        TrayState::Warning => "may be misheard".to_owned(),
-        TrayState::Error => "something failed; see the notification".to_owned(),
-    };
-    format!("Hece: {what}")
+    format!(
+        "Hece: {}",
+        tray_status(state, ui_language(), RECORD_SHORTCUT)
+    )
 }
 
 /// A filled (or, for errors, ring-shaped) circle in the state's colour.
@@ -133,12 +132,17 @@ fn icon(state: TrayState) -> Option<Icon> {
 
 fn tray() -> Option<TrayIcon> {
     let menu = Menu::new();
-    for (i, (action, label)) in MENU.iter().enumerate() {
+    for (i, action) in MENU.iter().enumerate() {
         if *action == MenuAction::Settings || *action == MenuAction::Quit {
             menu.append(&PredefinedMenuItem::separator()).ok()?;
         }
-        menu.append(&MenuItem::with_id(i.to_string(), label, true, None))
-            .ok()?;
+        menu.append(&MenuItem::with_id(
+            i.to_string(),
+            menu_label(*action, ui_language()),
+            true,
+            None,
+        ))
+        .ok()?;
     }
     let mut builder = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
@@ -187,7 +191,7 @@ fn run(
         }));
     }));
     MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
-        if let Some((action, _)) = e
+        if let Some(action) = e
             .id()
             .as_ref()
             .parse::<usize>()

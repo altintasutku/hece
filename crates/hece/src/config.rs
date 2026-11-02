@@ -18,7 +18,7 @@ mode = "hold"              # hold: hold Ctrl+Shift+Space while talking; toggle: 
 max_seconds = 600          # at most 660
 
 [transcription]
-language = "tr"            # remove for auto-detect
+# language = "en"          # pin the spoken language; default: auto-detect
 # vocabulary_file = 'C:\Users\you\hece-vocabulary.txt'  # one term per line, # comments
 prompt_tokens = 200
 allow_cloud_fallback = false   # a local provider may fall back to a cloud one only if true

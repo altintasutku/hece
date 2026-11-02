@@ -54,7 +54,7 @@ impl Model {
 }
 
 /// The models Hece can download. The first one is the default.
-pub const CATALOG: &[Model] = &[TURKISH, TURBO];
+pub const CATALOG: &[Model] = &[TURBO, TURKISH];
 
 const TURKISH: Model = Model {
     id: "large-v3-turkish-ec03ccf-int8",

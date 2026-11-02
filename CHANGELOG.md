@@ -33,6 +33,9 @@ The first public release (v0.1.0) is being prepared. Windows only.
 - Tray icon that shows the state (idle, recording, transcribing) and has the menu.
 - Animated recording overlay in the corner of the screen that follows your voice level; it can be
   turned off in settings.
+- Soft sound cues when the microphone is live, when recording stops and when a dictation is
+  cancelled or fails; the start cue is kept out of the transcript. Toggle in settings,
+  `[feedback] volume` in the config.
 - Settings window (**Hece Settings**) for the provider, model, shortcuts and options. It edits
   `config.toml` without losing your comments and applies changes without a restart. It opens by
   itself on first run.
@@ -45,6 +48,9 @@ The first public release (v0.1.0) is being prepared. Windows only.
   `config`, `devices`, `model`, `dictate` and `bench` (accuracy and latency benchmarks).
 - Dictation history and notifications for errors, each with a short message and a stable error
   code.
+- Update check: once a day Hece asks GitHub for the latest release (one request, nothing about you
+  is sent) and shows a notification and a tray entry when a newer version exists. It is the only
+  network call Hece makes on its own; turn it off in the settings or with `[updates] check = false`.
 - Per-user Windows install and uninstall scripts (no administrator rights), Start menu entries and
   optional autostart. The release zip can include the CUDA runtime.
 

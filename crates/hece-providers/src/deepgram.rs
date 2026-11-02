@@ -94,7 +94,7 @@ impl DeepgramProvider {
             let mut q = url.query_pairs_mut();
             q.append_pair("model", &self.cfg.model)
                 .append_pair("smart_format", "true");
-            match req.language {
+            match http::requested_language(req.language) {
                 Some(language) => q.append_pair("language", language),
                 None => q.append_pair("detect_language", "true"),
             };
@@ -152,8 +152,7 @@ impl DeepgramProvider {
             .next()
             .map(|a| a.transcript)
             .ok_or_else(|| http::bad_response(name))?;
-        let language = req
-            .language
+        let language = http::requested_language(req.language)
             .map(str::to_owned)
             .or_else(|| http::language_code(channel.detected_language.as_deref()))
             .unwrap_or_default();

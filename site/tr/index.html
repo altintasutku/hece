@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hece: Windows için ücretsiz Türkçe sesle yazma programı</title>
+<meta name="description" content="Kısayola basılı tut, konuş; Hece söylediklerini hangi uygulamadaysan oraya yazsın. Türkçe için eğitilmiş yerel Whisper, internetsiz çalışır. Ücretsiz ve açık kaynak.">
+<link rel="canonical" href="https://altintasutku.github.io/hece/tr/">
+<link rel="alternate" hreflang="en" href="https://altintasutku.github.io/hece/">
+<link rel="alternate" hreflang="tr" href="https://altintasutku.github.io/hece/tr/">
+<link rel="alternate" hreflang="x-default" href="https://altintasutku.github.io/hece/">
+<meta name="theme-color" content="#07080a">
+<meta name="color-scheme" content="dark">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Hece">
+<meta property="og:title" content="Hece: konuş, o yazsın">
+<meta property="og:description" content="Windows için ücretsiz, açık kaynak sesle yazma. Türkçe için eğitilmiş yerel Whisper.">
+<meta property="og:url" content="https://altintasutku.github.io/hece/tr/">
+<meta property="og:image" content="https://altintasutku.github.io/hece/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="tr_TR">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="preload" href="../fonts/schibsted-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="../styles.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "Hece",
+      "description": "Windows için arka planda çalışan sesle yazma uygulaması. Kısayolu basılı tutup konuşursun, metin odaktaki pencereye yapıştırılır. Türkçe için eğitilmiş yerel Whisper ya da bir bulut sağlayıcısı.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Windows",
+      "url": "https://altintasutku.github.io/hece/tr/",
+      "downloadUrl": "https://github.com/altintasutku/hece/releases/latest",
+      "license": "https://opensource.org/licenses/MIT",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "TRY" },
+      "inLanguage": "tr",
+      "author": { "@id": "https://altintasutku.github.io/hece/#author" }
+    },
+    {
+      "@type": "Person",
+      "@id": "https://altintasutku.github.io/hece/#author",
+      "name": "Utku Altıntaş",
+      "url": "https://github.com/altintasutku"
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">İçeriğe geç</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./" aria-label="Hece ana sayfa">He<i>·</i>ce</a>
+    <nav aria-label="Ana menü">
+      <a class="hide-sm" href="#nasil">Nasıl çalışır</a>
+      <a class="hide-sm" href="#gizlilik">Gizlilik</a>
+      <a class="hide-sm" href="#sss">SSS</a>
+      <a href="../" hreflang="en" lang="en">English</a>
+      <a class="btn btn-primary btn-sm" href="https://github.com/altintasutku/hece/releases/latest">İndir</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="wrap">
+      <div class="orb" aria-hidden="true"><div class="ring"></div><div class="core"></div><div class="wave"></div><div class="wave"></div></div>
+      <h1>Sen konuş, Hece yazsın.</h1>
+      <p class="lede">Hece, Windows için ücretsiz ve açık kaynak bir sesle yazma programı. Kısayolu basılı tut ve konuş; söylediklerin hangi uygulamadaysan oraya, kendi ekran kartında yazıya dökülerek gelsin.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/altintasutku/hece/releases/latest">Windows için indir</a>
+        <a class="btn btn-ghost" href="https://github.com/altintasutku/hece">GitHub'da yıldızla</a>
+      </div>
+      <p class="hint"><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Space</kbd> basılı tut ve konuşmaya başla</p>
+      <p class="req">Windows, 64-bit. Yerel mod NVIDIA ekran kartı ister; yoksa bir bulut sağlayıcısı kullanabilirsin.</p>
+
+      <div class="pillars">
+        <div class="pillar"><h2><span class="dot" style="background:var(--green)"></span>Sesin sende kalır</h2><p>Yerel Whisper senin bilgisayarında çalışır. Yerel modda ses bilgisayardan hiç çıkmaz.</p></div>
+        <div class="pillar"><h2><span class="dot" style="background:var(--blue)"></span>Türkçeyi iyi anlar</h2><p>Türkçe için eğitilmiş bir Whisper modeli ve isimleri, terimleri senin yazdığın gibi yazan bir sözlük.</p></div>
+        <div class="pillar"><h2><span class="dot" style="background:var(--yellow)"></span>Anlamını korur</h2><p>Sessizlikten uydurma cümle çıkmaz; düzeltme adımı bir "değil"i silemez.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="nasil">
+    <div class="wrap">
+      <p class="eyebrow">Nasıl çalışır</p>
+      <h2>İmlecin neredeyse, yazı orada.</h2>
+      <p class="intro">Hece sistem tepsisinde bekler. Kısayolu basılı tuttuğunda dinler, bıraktığında metni yazdığın pencereye yapıştırır: sohbet, editör, tarayıcı ya da terminal.</p>
+      <div class="how">
+        <ol class="steps">
+          <li><b><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Space</kbd> basılı tut</b><span>İstersen aç/kapa moduna geç: bir kez bas başlasın, bir kez bas dursun.</span></li>
+          <li><b>Rahatça konuş</b><span>Köşedeki küçük küre Hece'nin dinlediğini gösterir.</span></li>
+          <li><b>Bırak</b><span>Metin tek bir yapıştırmayla imlecin olduğu yere gelir. <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Backspace</kbd> iptal eder.</span></li>
+        </ol>
+        <div class="scene" aria-label="Örnek: sesle yazılan bir cevap sohbet penceresinde beliriyor">
+          <div class="orb" aria-hidden="true"><div class="ring"></div><div class="core"></div><div class="wave"></div><div class="wave"></div></div>
+          <div class="window">
+            <div class="bar"><span># sürüm-planı</span></div>
+            <div class="msgs">
+              <div class="msg"><b>Deniz</b>Kubernetes geçişi perşembe hâlâ geçerli mi?</div>
+              <div class="msg"><b>Ece</b>Staging sonuçlarını bekliyoruz.</div>
+            </div>
+            <div class="compose"><mark>Evet, ama staging testi geçmeden değil. Sonuçları öğlene kadar paylaşırım.</mark><span class="caret"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="kalite">
+    <div class="wrap">
+      <p class="eyebrow">Kalite</p>
+      <h2>Bir kez söyle, ne demek istediysen o yazılsın.</h2>
+      <p class="intro">Düz Whisper sessizlikte metin uydurur ve isimleri yanlış duyar. Hece, modelle pencere arasına kontroller koyar.</p>
+      <div class="pairs">
+        <div class="pair">
+          <div class="said"><small>Söylediğin</small>"kubırnetis ayarını deploy et"</div>
+          <div class="got"><small>Hece'nin yazdığı</small>Kubernetes ayarını deploy et.<br><span class="tag b">senin sözlüğün</span></div>
+        </div>
+        <div class="pair">
+          <div class="said"><small>Söylediğin</small>hiçbir şey, üç saniyelik sessizlik</div>
+          <div class="got"><small>Hece'nin yazdığı</small><del>Abone olmayı unutmayın.</del><br><span class="tag y">uydurma metin süzüldü</span></div>
+        </div>
+        <div class="pair">
+          <div class="said"><small>Söylediğin</small>"ııı şey cuma günü ee gelemeyeceğim"</div>
+          <div class="got"><small>Hece'nin yazdığı</small>Cuma günü gelemeyeceğim.<br><span class="tag g">olumsuzluk korundu</span></div>
+        </div>
+      </div>
+      <p class="note">Temsilî örneklerdir. İsteğe bağlı LLM düzeltmesi yalnızca dolgu sözcüklerini atar ve noktalamayı düzeltir; çıktısı bir olumsuzluğu düşürürse ya da uzunluğu sert değiştirirse Hece ham metni yapıştırır. Güveni düşük sonuçlar işaretlenir.</p>
+    </div>
+  </section>
+
+  <section class="band" id="gizlilik">
+    <div class="wrap">
+      <p class="eyebrow">Yerel ya da bulut</p>
+      <h2>Ses senin, motoru sen seç.</h2>
+      <div class="modes">
+        <div class="mode">
+          <h3>Yerel</h3>
+          <p>Türkçe için eğitilmiş Whisper large-v3, CTranslate2 ile NVIDIA ekran kartında çalışır.</p>
+          <ul>
+            <li>Ses bilgisayarından çıkmaz, internet gerekmez</li>
+            <li>Model gerektiğinde yüklenir, boşta kalınca bırakılır</li>
+            <li>Sürümü sabitlenmiş, checksum ile doğrulanan model indirmesi</li>
+            <li>Diğer uygulamalar yerel, OpenAI uyumlu bir API ile aynı modeli kullanabilir</li>
+          </ul>
+        </div>
+        <div class="mode">
+          <h3>Bulut</h3>
+          <p>Ekran kartın yok ya da başka bir dil mi? Güvendiğin bir sağlayıcının anahtarını ekle.</p>
+          <ul>
+            <li>OpenAI uyumlu servisler, Deepgram, Groq</li>
+            <li>Anahtarlar Windows Kimlik Bilgisi Yöneticisi'nde saklanır</li>
+            <li>Ses yalnızca seçtiğin sağlayıcıya gider</li>
+            <li>Ayarlardan istediğin an yerele dönebilirsin</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid">
+        <div><h3>Telemetri yok</h3><p>Hece senin hakkında hiçbir yere bir şey göndermez. Ses, metin ve anahtarlar asla loglanmaz.</p></div>
+        <div><h3>Pano geçmişine girmez</h3><p>Yapıştırılan metin Win+V geçmişine ve bulut panosuna düşmez.</p></div>
+        <div><h3>Geçmiş senin diskinde</h3><p>Son diktelerin yerelde durur, birini yeniden yapıştırabilirsin. Ayarlardan kapatabilir ya da sınırlayabilirsin.</p></div>
+        <div><h3>Yapıştırabildiğin her yerde</h3><p>Tek bir yapıştırma; tuş tuş yazma yok, klavye kancası yok.</p></div>
+        <div><h3>Boştayken hafif</h3><p>Küçük bir tepsi uygulaması; model yalnızca kullanırken bellek tutar.</p></div>
+        <div><h3>Açık kaynak, MIT</h3><p>Kodu oku, kendin derle ya da Linux ve macOS sürümlerine katkı ver.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="sss">
+    <div class="wrap">
+      <p class="eyebrow">SSS</p>
+      <h2>Sık sorulanlar.</h2>
+      <div class="faq">
+        <details><summary>Hece ücretsiz mi?</summary><p>Evet. Hece MIT lisanslı, ücretsiz ve açık kaynak. Hesap ya da abonelik yok. Bulut modunda, sağlayıcın ücret alıyorsa ona doğrudan ödersin.</p></details>
+        <details><summary>Türkçe sesle yazma için neden Hece?</summary><p>Yerel model, Türkçe için ince ayar yapılmış Whisper large-v3. Kendi sözlüğünle isimleri ve terimleri doğru yazar, sessizlikte "Abone olmayı unutmayın" gibi uydurma cümleleri süzer ve tamamen internetsiz çalışabilir.</p></details>
+        <details><summary>Ekran kartı şart mı?</summary><p>Yerel yazıya dökme için CUDA destekli bir NVIDIA ekran kartı gerekir. Yoksa bir bulut sağlayıcısı (OpenAI uyumlu, Deepgram ya da Groq) seçip anahtarını ayarlardan eklersin.</p></details>
+        <details><summary>Her uygulamada çalışır mı?</summary><p>Yapıştırabildiğin her yerde çalışır: sohbet uygulamaları, editörler, tarayıcılar, terminaller. Windows, yönetici olarak çalışan uygulamalara yapıştırmayı engeller; bu durumda metin Hece'nin geçmişinde kalır, kendin yapıştırabilirsin.</p></details>
+        <details><summary>Windows SmartScreen uyarısı veriyor. Güvenli mi?</summary><p>Yeni ve imzasız uygulamalar bu uyarıyı alır. Kod imzalama üzerinde çalışılıyor. O zamana kadar kaynağı GitHub'da inceleyip kendin derleyebilirsin.</p></details>
+        <details><summary>macOS ve Linux sürümü var mı?</summary><p>Hece önce Windows için. Linux ve macOS planlanıyor; çekirdek taşınabilir yazıldı ve GitHub'da katkıya açık.</p></details>
+        <details><summary>Windows'un sesle yazmasından (Win+H) farkı ne?</summary><p>Hece ekran kartında tamamen internetsiz çalışabilir, Türkçe için eğitilmiş bir model kullanır, senin sözlüğünü öğrenir ve uydurma metni süzer. Win+H'de kişisel sözlük yok.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap">
+      <div class="orb" aria-hidden="true"><div class="ring"></div><div class="core"></div><div class="wave"></div><div class="wave"></div></div>
+      <h2>Klavyene biraz mola ver.</h2>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/altintasutku/hece/releases/latest">Windows için indir</a>
+        <a class="btn btn-ghost" href="https://github.com/altintasutku/hece">Kaynağa göz at</a>
+      </div>
+      <p class="req">Ücretsiz ve açık kaynak. Hesap gerekmez.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span>Hece · MIT lisansı</span>
+    <nav aria-label="Alt menü">
+      <a href="https://github.com/altintasutku/hece">GitHub</a>
+      <a href="https://github.com/altintasutku/hece/releases">Sürümler</a>
+      <a href="https://github.com/altintasutku/hece/issues">Sorun bildir</a>
+      <a href="../" hreflang="en" lang="en">English</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

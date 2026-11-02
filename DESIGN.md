@@ -75,3 +75,30 @@ There is one accent, used sparingly: never as a background block, never for deco
 
 Cards, pastel tints, gradients, pill buttons, shadows, a second accent colour, emoji in the UI, and dark-graphite
 + neon (no dark theme until it is designed here).
+
+## Website: Gece
+
+The public site in `site/` has its own direction, **Gece**, chosen on 2026-11-03 from three candidates (Gece,
+Sahne, Sıcak; #57). Reference: Raycast (dark canvas, surface ladder instead of shadows, white pill CTA, keycaps).
+Its character comes from the product: the recording orb is the hero, so the first thing a visitor sees is what
+they will see on their own desktop. The settings app keeps Dizgi until #59 decides otherwise; the "no dark theme"
+rule above applies to the app, not the site.
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--canvas` | `#07080a` | page background |
+| `--surface` / `--surface-2` / `--card` | `#0d0d0d` / `#101111` / `#121212` | depth ladder (no shadows) |
+| `--hairline` | `#242728` | card borders, rules |
+| `--ink` / `--body` / `--mute` | `#f4f4f6` / `#cdcdcd` / `#9c9c9d` | headings / body / helper text |
+| `--violet` | `#9682ff` | eyebrows, logo dot, list markers, caret (from the orb) |
+| `--green`, `--blue`, `--yellow`, `--red` | `#59d499`, `#57c1ff`, `#ffc533`, `#ff6161` | only as small dots and tags in feature illustrations |
+
+- **Type:** Schibsted Grotesk (variable, 400-700) for everything; headings 600 with negative tracking. Instrument
+  Serif only for the `He·ce` wordmark. Both self-hosted in `site/fonts` (SIL OFL); no third-party requests.
+- **Shape:** cards 12 px radius with a 1 px hairline; buttons are pills (white primary, hairline ghost). Keycaps
+  are the only gradient besides the orb and the hero glow.
+- **Orb:** the overlay look (A3) in CSS: rainbow ring blurred behind a violet core with two syllable waves. It
+  spins slowly; `prefers-reduced-motion` stops every animation.
+- **Copy:** facts must match `.agents/product-marketing.md`. No invented numbers, testimonials or logos. Examples
+  are synthetic and labelled as illustrative.
+- **Avoid:** light sections, a second primary colour, shadows on chrome, Inter/Geist, stock photos.

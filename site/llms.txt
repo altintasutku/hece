@@ -1,0 +1,17 @@
+# Hece
+
+> Hece is a free, open-source (MIT) voice-dictation app for Windows. Hold a hotkey (Ctrl+Shift+Space), speak, and the text is pasted into the focused window. Speech is transcribed locally by Whisper large-v3 fine-tuned for Turkish (CTranslate2, NVIDIA GPU) or by a cloud provider (OpenAI-compatible endpoints, Deepgram, Groq).
+
+- Quality layers: personal vocabulary, a filter for text Whisper invents in silence, a low-confidence signal, and optional LLM cleanup with a guard that rejects edits which drop a negation.
+- Privacy: in local mode audio never leaves the PC; no telemetry; audio, transcripts and API keys are never logged; API keys live in the Windows Credential Manager.
+- Also: push-to-talk or toggle mode, local dictation history, a local OpenAI-compatible transcription API.
+- Platforms: Windows (64-bit). Linux and macOS are planned.
+- Price: free. No account.
+
+## Links
+
+- [Website (English)](https://altintasutku.github.io/hece/)
+- [Website (Turkish)](https://altintasutku.github.io/hece/tr/)
+- [Source code](https://github.com/altintasutku/hece)
+- [Download](https://github.com/altintasutku/hece/releases/latest)
+- [Report an issue](https://github.com/altintasutku/hece/issues)

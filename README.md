@@ -19,12 +19,11 @@ License: MIT
    `powershell -ExecutionPolicy Bypass -File install.ps1`. It installs to
    `%LOCALAPPDATA%\Programs\Hece` (no administrator rights), adds **Hece** and **Hece Ayarlar** to
    the Start menu and turns on autostart (`-NoAutostart` skips that).
-2. Local transcription needs an NVIDIA GPU and the Whisper model:
-   `uv run prepare_model.py <dir>` (install.ps1 prints the suggested `<dir>`) converts the
-   Turkish fine-tuned large-v3 (`turkmedstt/whisper-large-v3-turkish-general`, pinned and
-   checksummed).
-   Without the CUDA runtime, use a cloud provider instead.
-3. Open **Hece Ayarlar** and set the model folder, or a cloud provider and its key (stored in the
+2. Local transcription needs an NVIDIA GPU and a Whisper model. Download one in **Hece Ayarlar**
+   or with `hece model download` (`hece model list` shows them): multilingual Whisper large-v3
+   turbo by default, or a fine-tuned single-language model such as Turkish. Downloads are pinned
+   and checksummed. Without the CUDA runtime, use a cloud provider instead.
+3. Open **Hece Ayarlar** and pick the downloaded model, or a cloud provider and its key (stored in the
    Windows Credential Manager). It writes `config.toml` (`hece config` prints the path) and keeps
    your comments. If Hece starts before this is set, it opens the settings window itself.
 4. Start Hece from the Start menu. Hold **Ctrl+Shift+Space** and speak; release to insert.

@@ -3,6 +3,7 @@
 
 mod meter;
 mod scene;
+mod sphere;
 
 pub use meter::{Meter, Voice};
 pub use scene::{EXIT, Scene};

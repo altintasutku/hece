@@ -9,10 +9,18 @@ $ErrorActionPreference = 'Stop'
 $source = $PSScriptRoot
 $target = Join-Path $env:LOCALAPPDATA 'Programs\Hece'
 
-Get-Process hecew, hece -ErrorAction SilentlyContinue | Stop-Process -Force
+# Only this session's copies: another signed-in user's Hece is theirs (and not ours to stop).
+$session = (Get-Process -Id $PID).SessionId
+Get-Process hecew, hece, hece-engine -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session | Stop-Process -Force
 New-Item -ItemType Directory -Force $target | Out-Null
-Get-ChildItem $source -File | Where-Object { $_.Extension -in '.exe', '.dll', '.py', '.md', '.ps1' -or $_.Name -eq 'LICENSE' } |
-    Copy-Item -Destination $target -Force
+# Only the files the release ships: anything else in this folder (say, a DLL in Downloads) must
+# not end up next to the executables, which load DLLs from their own folder first.
+$shipped = 'hece.exe', 'hecew.exe', 'hece-engine.exe', 'install.ps1', 'uninstall.ps1',
+    'prepare_model.py', 'README.md', 'LICENSE', 'cudart64_13.dll', 'cublas64_13.dll', 'cublasLt64_13.dll'
+foreach ($file in $shipped) {
+    $path = Join-Path $source $file
+    if (Test-Path $path) { Copy-Item $path -Destination $target -Force }
+}
 
 $shell = New-Object -ComObject WScript.Shell
 $link = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'Hece.lnk'))

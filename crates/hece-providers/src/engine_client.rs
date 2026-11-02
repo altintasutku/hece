@@ -94,6 +94,9 @@ pub enum EngineClientError {
     /// location.
     #[error("no runtime directory available for the engine socket")]
     NoRuntimeDir,
+    /// The engine pipe belongs to another account, so nothing is sent to it.
+    #[error("another user holds the engine pipe")]
+    ForeignPipe,
 }
 
 impl EngineClientError {
@@ -112,6 +115,7 @@ impl EngineClientError {
             Self::Protocol(_) => "engine_protocol",
             Self::Io(_) => "engine_io",
             Self::NoRuntimeDir => "no_runtime_dir",
+            Self::ForeignPipe => "foreign_pipe",
         }
     }
 }
@@ -545,6 +549,13 @@ impl EngineClient {
             }
             sleep(RETRY_INTERVAL).await;
         };
+        // The pipe name is predictable and machine-wide: never send audio to another account.
+        #[cfg(windows)]
+        if !hece_platform::pipe_server_is_current_user(&stream) {
+            tracing::warn!("engine pipe is held by another user");
+            Self::kill_child(state).await;
+            return Err(EngineClientError::ForeignPipe);
+        }
         // The socket answered, so a worker is alive but may be busy (for example loading a
         // model for another client); give it the connect budget plus a full request budget.
         let hello_budget = self

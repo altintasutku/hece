@@ -1860,6 +1860,7 @@ name = "hece-providers"
 version = "0.1.0"
 dependencies = [
  "hece-core",
+ "hece-platform",
  "hound",
  "keyring",
  "reqwest",

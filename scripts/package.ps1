@@ -36,5 +36,6 @@ if ($BundleCuda) {
 
 $zip = Join-Path $root "target\dist\$name.zip"
 Remove-Item -Force $zip -ErrorAction SilentlyContinue
-Compress-Archive -Path "$stage\*" -DestinationPath $zip
+# The folder itself, so unpacking never mixes the release with other files.
+Compress-Archive -Path $stage -DestinationPath $zip
 Write-Output $zip

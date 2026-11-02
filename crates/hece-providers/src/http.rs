@@ -20,6 +20,9 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub(crate) fn client(provider: &str) -> Result<reqwest::Client, ProviderError> {
     reqwest::Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
+        // A redirect would resend the key header (reqwest strips only Authorization) and may
+        // downgrade to http; the configured endpoint is the only place keys go.
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| config(provider, "http client could not be built"))
 }

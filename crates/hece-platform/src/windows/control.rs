@@ -1,17 +1,20 @@
 //! The daemon's control pipe (`hece status`, `hece toggle`): one short line in, one line out.
 //! Same protection as the engine pipe: owner/SYSTEM/Administrators only, local clients only,
-//! and first instance only, so a second daemon (or a squatter) cannot share the name.
+//! and first instance only, so a second daemon cannot share the name. The name is predictable,
+//! so clients and a failed bind check that the pipe belongs to this user.
 
 use std::path::Path;
 use std::time::Duration;
 
 use interprocess::local_socket::tokio::{Listener, Stream};
-use interprocess::local_socket::traits::tokio::{Listener as _, Stream as _};
+use interprocess::local_socket::traits::tokio::Listener as _;
 use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName};
 use interprocess::os::windows::local_socket::ListenerOptionsExt;
 use interprocess::os::windows::security_descriptor::SecurityDescriptor;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 
+use super::pipe_server_is_current_user;
 use crate::PlatformError;
 
 /// Protected DACL: full access for the pipe's owner, SYSTEM and Administrators, nobody else.
@@ -42,7 +45,8 @@ fn name(path: &Path) -> Result<interprocess::local_socket::Name<'static>, Platfo
 
 impl ControlListener {
     /// Creates the pipe for `path`; fails with [`PlatformError::AlreadyRunning`] when another
-    /// daemon owns it. Must be called inside a tokio runtime.
+    /// daemon of this user owns it and [`PlatformError::ForeignPipe`] when another account does.
+    /// Must be called inside a tokio runtime.
     pub fn bind(path: &Path) -> Result<Self, PlatformError> {
         let sd = SecurityDescriptor::deserialize(PIPE_SDDL).map_err(|_| PlatformError::Control)?;
         ListenerOptions::new()
@@ -54,7 +58,7 @@ impl ControlListener {
                 if e.kind() == std::io::ErrorKind::PermissionDenied
                     || e.kind() == std::io::ErrorKind::AddrInUse
                 {
-                    PlatformError::AlreadyRunning
+                    existing_owner(path)
                 } else {
                     tracing::warn!(kind = ?e.kind(), "control pipe bind failed");
                     PlatformError::Control
@@ -96,19 +100,44 @@ impl ControlRequest {
     }
 }
 
+/// Opens the pipe as a client. Tokio asks for `SECURITY_IDENTIFICATION`, so a server learns
+/// who connected but cannot act as them.
+fn connect(path: &Path) -> Result<NamedPipeClient, PlatformError> {
+    let stream = ClientOptions::new()
+        .open(hece_core::ipc::pipe_name(path))
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                PlatformError::ForeignPipe
+            } else {
+                PlatformError::NotRunning
+            }
+        })?;
+    if pipe_server_is_current_user(&stream) {
+        Ok(stream)
+    } else {
+        Err(PlatformError::ForeignPipe)
+    }
+}
+
+/// Why the bind failed: our own daemon (a busy pipe is ours too) or another account's pipe.
+fn existing_owner(path: &Path) -> PlatformError {
+    match connect(path) {
+        Err(PlatformError::ForeignPipe) => PlatformError::ForeignPipe,
+        _ => PlatformError::AlreadyRunning,
+    }
+}
+
 /// Sends `command` to the running daemon and returns its answer;
 /// [`PlatformError::NotRunning`] when no daemon listens.
 pub async fn control_request(path: &Path, command: &str) -> Result<String, PlatformError> {
     let exchange = async {
-        let stream = Stream::connect(name(path)?)
-            .await
-            .map_err(|_| PlatformError::NotRunning)?;
-        (&stream)
+        let mut stream = connect(path)?;
+        stream
             .write_all(format!("{command}\n").as_bytes())
             .await
             .map_err(|_| PlatformError::Control)?;
         let mut answer = String::new();
-        BufReader::new((&stream).take(1024))
+        BufReader::new(stream.take(1024))
             .read_line(&mut answer)
             .await
             .map_err(|_| PlatformError::Control)?;

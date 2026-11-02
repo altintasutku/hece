@@ -59,15 +59,30 @@ fn local_host(headers: &HeaderMap) -> bool {
         .is_some_and(|h| matches!(h, "127.0.0.1" | "localhost" | "[::1]"))
 }
 
-/// Decodes any PCM/float WAV to 16 kHz mono; `None` if it is not a readable WAV.
-fn decode_wav(bytes: &[u8]) -> Option<Vec<i16>> {
-    let reader = hound::WavReader::new(Cursor::new(bytes)).ok()?;
+/// Why an upload is not decoded.
+enum Rejected {
+    Unsupported,
+    TooLong,
+}
+
+/// Decodes any PCM/float WAV to 16 kHz mono. The header's rate and length size the decode and
+/// the resampler, so odd rates and over-long files are refused before anything is allocated.
+fn decode_wav(bytes: &[u8]) -> Result<Vec<i16>, Rejected> {
+    let reader = hound::WavReader::new(Cursor::new(bytes)).map_err(|_| Rejected::Unsupported)?;
     let spec = reader.spec();
+    if !(8_000..=192_000).contains(&spec.sample_rate) {
+        return Err(Rejected::Unsupported);
+    }
+    if u64::from(reader.duration()) * 16_000 / u64::from(spec.sample_rate)
+        > MAX_AUDIO_SAMPLES as u64
+    {
+        return Err(Rejected::TooLong);
+    }
     let samples: Vec<f32> = match (spec.sample_format, spec.bits_per_sample) {
         (hound::SampleFormat::Float, 32) => reader
             .into_samples::<f32>()
             .collect::<Result<_, _>>()
-            .ok()?,
+            .map_err(|_| Rejected::Unsupported)?,
         (hound::SampleFormat::Int, bits @ 8..=32) => {
             let scale = 1.0 / f64::from(1u32 << (bits - 1));
             reader
@@ -80,12 +95,12 @@ fn decode_wav(bytes: &[u8]) -> Option<Vec<i16>> {
                     s.map(|v| (f64::from(v) * scale) as f32)
                 })
                 .collect::<Result<_, _>>()
-                .ok()?
+                .map_err(|_| Rejected::Unsupported)?
         }
-        _ => return None,
+        _ => return Err(Rejected::Unsupported),
     };
     let mono = hece_audio::resample::downmix(&samples, spec.channels);
-    hece_audio::resample::to_16k(&mono, spec.sample_rate).ok()
+    hece_audio::resample::to_16k(&mono, spec.sample_rate).map_err(|_| Rejected::Unsupported)
 }
 
 #[derive(Default)]
@@ -189,24 +204,26 @@ async fn transcriptions(
             "response_format must be json, text or verbose_json",
         );
     }
-    let Some(audio) = tokio::task::spawn_blocking(move || decode_wav(&file))
+    let decoded = tokio::task::spawn_blocking(move || decode_wav(&file))
         .await
-        .ok()
-        .flatten()
-    else {
-        return error(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "unsupported_audio",
-            "only WAV audio is supported",
-        );
+        .unwrap_or(Err(Rejected::Unsupported));
+    let audio = match decoded {
+        Ok(audio) if audio.len() <= MAX_AUDIO_SAMPLES => audio,
+        Ok(_) | Err(Rejected::TooLong) => {
+            return error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "audio_too_long",
+                "audio is longer than 11 minutes",
+            );
+        }
+        Err(Rejected::Unsupported) => {
+            return error(
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "unsupported_audio",
+                "only WAV audio is supported",
+            );
+        }
     };
-    if audio.len() > MAX_AUDIO_SAMPLES {
-        return error(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "audio_too_long",
-            "audio is longer than 11 minutes",
-        );
-    }
     // Per-request vocabulary: `hece_vocabulary` (one term per line), else the `prompt` terms.
     let request_vocab = form.vocabulary.map(|v| Vocabulary::parse(&v)).or_else(|| {
         form.prompt
@@ -454,5 +471,10 @@ mod tests {
                 .status(),
             415
         );
+        // A header rate of 1 Hz would make the resampler allocate ~16000x the input.
+        let mut absurd_rate = wav_48k_stereo();
+        absurd_rate[24..28].copy_from_slice(&1u32.to_le_bytes());
+        absurd_rate[28..32].copy_from_slice(&4u32.to_le_bytes());
+        assert_eq!(post(&base, Some(&token), absurd_rate).await.status(), 415);
     }
 }

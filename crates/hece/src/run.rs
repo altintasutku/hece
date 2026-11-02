@@ -607,8 +607,15 @@ async fn start_api(
 pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
     let listener = ControlListener::bind(&paths.control)?;
     let setup = setup(&cfg)?;
-    if cfg.api.enabled {
-        start_api(&cfg, &paths, &setup).await?;
+    // The API is optional: a busy port must not take dictation down with it.
+    if cfg.api.enabled
+        && let Err(e) = start_api(&cfg, &paths, &setup).await
+    {
+        tracing::error!(error = %e, port = cfg.api.port, "local API did not start");
+        toast(&format!(
+            "local API did not start on port {} (in use?); dictation still works",
+            cfg.api.port
+        ));
     }
     let (tx, mut rx) = mpsc::unbounded_channel();
     let desktop_tx = tx.clone();

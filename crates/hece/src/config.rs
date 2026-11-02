@@ -327,7 +327,16 @@ pub enum ConfigError {
 impl Config {
     /// Parses and validates `text`.
     pub fn parse(text: &str) -> Result<Self, String> {
-        let cfg: Self = toml::from_str(text).map_err(|e| e.to_string())?;
+        // Only the message and line: the toml error's Display quotes the offending line, which
+        // may hold a pasted key, and this text reaches the log and a toast.
+        let cfg: Self = toml::from_str(text).map_err(|e| match e.span() {
+            Some(span) => format!(
+                "line {}: {}",
+                text[..span.start].matches('\n').count() + 1,
+                e.message()
+            ),
+            None => e.message().to_owned(),
+        })?;
         cfg.validate()?;
         Ok(cfg)
     }
@@ -404,6 +413,17 @@ mod tests {
         assert_eq!(err, "[provider] base_url is required for kind = Openai");
         let err = Config::parse("[provider]\nkind = \"deepgram\"\nkey = \"none\"\n").unwrap_err();
         assert_eq!(err, "[provider] deepgram needs a key");
+        // A pasted key in a malformed or misnamed line must not be quoted back.
+        for text in [
+            "[provider]\nkey = sk-pasted\n",
+            "[provider]\napi_key = \"sk-pasted\"\n",
+        ] {
+            let err = Config::parse(text).unwrap_err();
+            assert!(
+                err.starts_with("line 2:") && !err.contains("sk-pasted"),
+                "{err}"
+            );
+        }
     }
 
     #[test]

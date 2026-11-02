@@ -9,7 +9,7 @@ mod windows;
 pub use windows::{
     CANCEL_SHORTCUT, ControlListener, ControlRequest, Desktop, Inserted, RECORD_SHORTCUT, Window,
     autostart_enabled, control_request, copy, disable_autostart, enable_autostart, focused_window,
-    insert, notify, open,
+    insert, notify, open, pipe_server_is_current_user,
 };
 
 /// Which global shortcut fired.
@@ -51,6 +51,9 @@ pub enum PlatformError {
     /// No daemon is running.
     #[error("hece is not running")]
     NotRunning,
+    /// Another account holds the pipe name this user's daemon or engine needs.
+    #[error("another user holds hece's pipe; sign that user out or restart Windows")]
+    ForeignPipe,
     /// Autostart could not be changed.
     #[error("autostart could not be changed")]
     Autostart,
@@ -75,6 +78,7 @@ impl PlatformError {
             Self::Control => "control_failed",
             Self::AlreadyRunning => "already_running",
             Self::NotRunning => "not_running",
+            Self::ForeignPipe => "foreign_pipe",
             Self::Autostart => "autostart_failed",
         }
     }

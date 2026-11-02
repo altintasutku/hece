@@ -32,18 +32,18 @@
   {#if editing}
     <input type="password" autocomplete="off" placeholder={t.key.placeholder} bind:value={secret}
       onkeydown={(e) => e.key === "Enter" && secret && run(() => storeKey(section, secret))} />
-    <button disabled={!secret} onclick={() => run(() => storeKey(section, secret))}>{t.key.save}</button>
+    <button class="primary" disabled={!secret} onclick={() => run(() => storeKey(section, secret))}>{t.key.save}</button>
     <button onclick={() => { editing = false; secret = ""; }}>{t.key.cancel}</button>
   {:else if stored}
     <span class="stored">{t.key.stored}</span>
     <button onclick={() => (editing = true)}>{t.key.change}</button>
     <button onclick={() => run(() => deleteKey(section))}>{t.key.remove}</button>
   {:else}
-    <button onclick={() => (editing = true)}>{t.key.add}</button>
+    <button class="primary" onclick={() => (editing = true)}>{t.key.add}</button>
   {/if}
 </Row>
 
 <style>
-  .stored { color: var(--accent); font-weight: 600; margin-right: 6px; }
+  .stored { color: var(--violet); font-weight: 600; margin-right: 6px; }
   input { width: 220px; }
 </style>

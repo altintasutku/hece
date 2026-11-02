@@ -21,11 +21,11 @@
 </script>
 
 <Row label={s.record} help={s.recordHelp}>
-  <span class="chip">Ctrl</span><span class="chip">Shift</span><span class="chip">Space</span>
+  <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd>
 </Row>
 
 <Row label={s.cancel} help={s.cancelHelp}>
-  <span class="chip">Ctrl</span><span class="chip">Shift</span><span class="chip">Backspace</span>
+  <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Backspace</kbd>
 </Row>
 
 <Row label={s.mode} help={s.modeHelp} note={notes.mode}>
@@ -59,7 +59,3 @@
     {/each}
   </select>
 </Row>
-
-<style>
-  .chip { font: 500 12px/1 var(--sans); border: 1px solid var(--ink); padding: 3px 7px; }
-</style>

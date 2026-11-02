@@ -16,9 +16,6 @@
 <p class="quote">{t.about.quote}</p>
 
 <style>
-  .muted { color: var(--muted); font-size: 12.5px; }
-  .quote {
-    margin-top: 22px; padding-left: 12px; border-left: 2px solid var(--accent);
-    font: italic 400 19px/1.35 var(--serif);
-  }
+  .muted { color: var(--mute); font-size: 12.5px; }
+  .quote { padding: 14px 0 16px; border-top: 1px solid var(--hairline); color: var(--body); }
 </style>

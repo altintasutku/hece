@@ -51,6 +51,11 @@
     onchange={(e) => change("overlay", { "ui.overlay": e.currentTarget.checked })} />
 </Row>
 
+<Row label={s.sounds} help={s.soundsHelp} note={notes.sounds}>
+  <input type="checkbox" checked={snap.values["feedback.sounds"] !== false}
+    onchange={(e) => change("sounds", { "feedback.sounds": e.currentTarget.checked })} />
+</Row>
+
 <Row label={s.maxLength} help={s.maxLengthHelp} note={notes.max}>
   <select value={minutes}
     onchange={(e) => change("max", { "recording.max_seconds": Number(e.currentTarget.value) * 60 })}>

@@ -33,6 +33,9 @@ The first public release (v0.1.0) is being prepared. Windows only.
 - Tray icon that shows the state (idle, recording, transcribing) and has the menu.
 - Animated recording overlay in the corner of the screen that follows your voice level; it can be
   turned off in settings.
+- Soft sound cues when the microphone is live, when recording stops and when a dictation is
+  cancelled or fails; the start cue is kept out of the transcript. Toggle in settings,
+  `[feedback] volume` in the config.
 - Settings window (**Hece Settings**) for the provider, model, shortcuts and options. It edits
   `config.toml` without losing your comments and applies changes without a restart. It opens by
   itself on first run.

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use hece_audio::{AudioError, Capture, CaptureConfig, CaptureEvent, Level, Recording};
+use hece_audio::{AudioError, Capture, CaptureConfig, CaptureEvent, Cue, Level, Mute, Recording};
 use hece_core::chunker::{ChunkPolicy, next_cut};
 use hece_core::recorder::{Action, Input, Mode, Recorder, RecordingId};
 use hece_core::{Transcript, Vocabulary};
@@ -173,6 +173,10 @@ struct Daemon {
     flag: Option<(TrayState, Instant)>,
     /// The capture level every recording publishes; the overlay reads it.
     level: Level,
+    /// Silences the capture while the start cue plays, so the microphone does not record it.
+    mute: Mute,
+    /// The cue volume when `[feedback] sounds` is on.
+    cues: Option<f32>,
     /// The recording overlay, when `[ui] overlay` is on.
     overlay: Option<Overlay>,
     /// How the last finished job ended, until the overlay plays it.
@@ -223,6 +227,18 @@ impl Daemon {
 
     fn fail(&mut self, message: &str) {
         self.alert(TrayState::Error, message);
+    }
+
+    /// Plays a sound cue in the background when sounds are on. The start cue mutes the capture
+    /// while it sounds (the user waits for it before speaking); any other cue is skipped while
+    /// a recording runs, since the microphone would pick it up mid-speech (the toast remains).
+    fn cue(&self, cue: Cue) {
+        let Some(volume) = self.cues else { return };
+        if cue == Cue::Start {
+            hece_audio::cue::play(cue, volume, Some(self.mute.clone()));
+        } else if !self.recorder.is_recording() {
+            hece_audio::cue::play(cue, volume, None);
+        }
     }
 
     /// Start/stop regardless of the hotkey mode.
@@ -293,7 +309,8 @@ impl Daemon {
         self.prompt_tokens = setup.prompt_tokens;
         self.mode = mode(cfg);
         self.recorder = Recorder::new(self.mode, MIN_SAMPLES);
-        self.capture_cfg = capture_config(cfg, &self.level);
+        self.capture_cfg = capture_config(cfg, &self.level, &self.mute);
+        self.cues = cfg.feedback.cue_volume();
         self.set_overlay(cfg.ui.overlay);
         self.history = open_history(cfg, &self.state_dir);
         if let Some(engine) = &setup.engine {
@@ -371,6 +388,7 @@ impl Daemon {
                     self.mic_live = true;
                     tracing::info!(latency_ms = latency.as_millis(), "mic live");
                     output::status("● recording");
+                    self.cue(Cue::Start);
                     None
                 }
                 CaptureEvent::LimitReached => {
@@ -393,6 +411,11 @@ impl Daemon {
                 let samples = recording.samples.len();
                 if let Some(stopped) = self.stopped.get(&id) {
                     tracing::info!(ms = stopped.elapsed().as_millis(), "capture closed");
+                }
+                // Only now, after the post-roll: earlier, the microphone would record the cue
+                // on top of the last word. Too short a recording gets the failure cue instead.
+                if samples >= MIN_SAMPLES {
+                    self.cue(Cue::Stop);
                 }
                 self.audio.insert(id, recording.samples);
                 Some(Input::Captured { id, samples })
@@ -484,6 +507,7 @@ impl Daemon {
                 }
                 self.drop_chunks(id);
                 self.outcome = Some(Outcome::Failed);
+                self.cue(Cue::Cancel);
                 output::status("cancelled");
             }
             Action::Transcribe(id) => self.transcribe(id),
@@ -496,6 +520,7 @@ impl Daemon {
                 self.audio.remove(&id);
                 self.targets.remove(&id);
                 self.outcome = Some(Outcome::Failed);
+                self.cue(Cue::Cancel);
                 output::status("cancelled");
             }
             Action::Insert(id) => self.insert(id).await,
@@ -515,6 +540,7 @@ impl Daemon {
             .remove(&id)
             .unwrap_or_else(|| (fallback, Toast::NothingHeard.to_string()));
         self.outcome = Some(outcome);
+        self.cue(Cue::Cancel);
         self.fail(&why);
     }
 
@@ -745,11 +771,12 @@ fn mode(cfg: &Config) -> Mode {
     }
 }
 
-fn capture_config(cfg: &Config, level: &Level) -> CaptureConfig {
+fn capture_config(cfg: &Config, level: &Level, mute: &Mute) -> CaptureConfig {
     CaptureConfig {
         device: cfg.recording.device.clone(),
         max_duration: Duration::from_secs(cfg.recording.max_seconds),
         level: level.clone(),
+        mute: mute.clone(),
         ..CaptureConfig::default()
     }
 }
@@ -845,6 +872,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
     ));
     tracing::info!(mode = how, "daemon ready");
     let level = Level::default();
+    let mute = Mute::default();
     let mut daemon = Daemon {
         providers: setup.providers,
         engine: setup.engine,
@@ -853,7 +881,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         language: setup.language,
         prompt_tokens: setup.prompt_tokens,
         mode,
-        capture_cfg: capture_config(&cfg, &level),
+        capture_cfg: capture_config(&cfg, &level, &mute),
         history: open_history(&cfg, &paths.state_dir),
         config_file: paths.config_file,
         state_dir: paths.state_dir,
@@ -877,6 +905,8 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
             None
         },
         level,
+        mute,
+        cues: cfg.feedback.cue_volume(),
         outcome: None,
         quit: false,
     };

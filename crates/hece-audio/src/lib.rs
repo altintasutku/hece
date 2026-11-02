@@ -3,7 +3,7 @@
 pub mod capture;
 pub mod resample;
 
-pub use capture::{Capture, CaptureConfig, CaptureEvent, Recording, input_devices};
+pub use capture::{Capture, CaptureConfig, CaptureEvent, Level, Recording, input_devices};
 
 /// Capture failures. [`AudioError::code`] is the stable user-facing code.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

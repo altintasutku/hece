@@ -5,7 +5,8 @@
 # Used locally and by .github/workflows/release.yml. Needs the CUDA Toolkit 13.x, and cmake, rust
 # and bun from mise.toml. Steps:
 #   1. hece, hecew and the CUDA engine (scripts/build-engine.ps1, +crt-static).
-#   2. onnxruntime.dll (Silero VAD) from Microsoft's release, pinned by sha256.
+#   2. Third-party license notices (cargo-about) and onnxruntime.dll (Silero VAD) from
+#      Microsoft's release, pinned by sha256.
 #   3. The settings app and the NSIS installer (Tauri), which ships 1 and 2 next to hece-settings.exe.
 # The CUDA runtime DLLs and Whisper models are not bundled; Hece downloads them on demand.
 $ErrorActionPreference = 'Stop'
@@ -25,6 +26,10 @@ New-Item -ItemType Directory -Force $bins | Out-Null
 foreach ($name in 'hece', 'hecew', 'hece-engine') {
     Copy-Item "target\release\$name.exe" (Join-Path $bins "$name-$triple.exe") -Force
 }
+
+# License texts of every Rust crate in the shipped binaries (cargo-about, from mise.toml).
+& mise x -- cargo about generate --features hece-engine/cuda,hece-engine/ort-dynamic about.hbs -o (Join-Path $bins 'THIRD_PARTY_LICENSES.txt')
+if ($LASTEXITCODE -ne 0) { throw 'license notices failed' }
 
 $ortDir = Join-Path $root 'target\onnxruntime'
 $ortZip = Join-Path $ortDir "onnxruntime-win-x64-$ortVersion.zip"

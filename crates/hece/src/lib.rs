@@ -59,7 +59,15 @@ pub fn background_main() -> ExitCode {
         let result = runtime().and_then(|rt| rt.block_on(daemon(None)));
         if let Err(e) = result {
             tracing::error!(error = %e, "daemon failed");
-            hece_platform::notify("Hece could not start", &format!("{e:#}"));
+            // A new or broken config is fixed in the settings window, so open it right away.
+            if e.downcast_ref::<ConfigError>().is_some() && open_settings() {
+                hece_platform::notify(
+                    "Hece needs setup",
+                    "Settings are open: set the model folder or a cloud provider, then press Başlat.",
+                );
+            } else {
+                hece_platform::notify("Hece could not start", &format!("{e:#}"));
+            }
             return ExitCode::from(EXIT_SETUP);
         }
         ExitCode::SUCCESS
@@ -69,6 +77,16 @@ pub fn background_main() -> ExitCode {
         output::error("hecew is Windows-only; use `hece run`");
         ExitCode::from(EXIT_SETUP)
     }
+}
+
+/// Starts the settings window installed next to this binary; `false` if it is not there.
+#[cfg(windows)]
+pub(crate) fn open_settings() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join("hece-settings.exe")))
+        .filter(|p| p.is_file())
+        .is_some_and(|app| std::process::Command::new(app).spawn().is_ok())
 }
 
 fn runtime() -> anyhow::Result<tokio::runtime::Runtime> {
@@ -84,7 +102,6 @@ fn load_config(path: Option<std::path::PathBuf>) -> anyhow::Result<Config> {
     };
     match Config::load(&path) {
         Ok(cfg) => Ok(cfg),
-        Err(e @ ConfigError::Created(_)) => anyhow::bail!("{e}"),
         Err(e) => Err(e.into()),
     }
 }

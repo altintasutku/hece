@@ -93,10 +93,28 @@ async fn delete_key(section: String) -> Result<String, String> {
     Ok(settings::reload().await)
 }
 
+/// Starts the daemon (`hecew.exe`, installed next to this window).
+#[tauri::command]
+fn start_daemon() -> Result<(), String> {
+    let hecew = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join("hecew.exe")))
+        .filter(|p| p.is_file())
+        .ok_or("hecew.exe is not next to the settings window")?;
+    std::process::Command::new(hecew)
+        .spawn()
+        .map(drop)
+        .map_err(|e| format!("could not start Hece ({:?})", e.kind()))
+}
+
 fn main() -> ExitCode {
     let run = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            snapshot, set_values, store_key, delete_key
+            snapshot,
+            set_values,
+            store_key,
+            delete_key,
+            start_daemon
         ])
         .run(tauri::generate_context!());
     if run.is_ok() {

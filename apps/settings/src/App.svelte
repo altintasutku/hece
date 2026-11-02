@@ -2,7 +2,7 @@
   import About from "./lib/About.svelte";
   import Provider from "./lib/Provider.svelte";
   import Shortcuts from "./lib/Shortcuts.svelte";
-  import { snapshot, type Snapshot, type Value } from "./lib/api";
+  import { snapshot, startDaemon, type Snapshot, type Value } from "./lib/api";
   import { save } from "./lib/save";
   import { sections, type Section } from "./lib/strings";
 
@@ -22,6 +22,21 @@
 
   async function saveTo(changes: Record<string, Value>) {
     return snap ? save(snap, changes) : { text: "Ayarlar henüz okunmadı", error: true };
+  }
+
+  let starting = $state(false);
+  async function start() {
+    starting = true;
+    try {
+      await startDaemon();
+      // Give the daemon a moment to open its pipe before asking how it is.
+      await new Promise((r) => setTimeout(r, 2500));
+      await refresh();
+    } catch (e) {
+      failure = String(e);
+    } finally {
+      starting = false;
+    }
   }
 
   function onkeydown(e: KeyboardEvent) {
@@ -51,6 +66,13 @@
     </h1>
     <p class="lede">{current.lede}</p>
 
+    {#if snap?.daemon === "not_running"}
+      <div class="banner" role="status">
+        <span>Hece çalışmıyor. Ayarları düzelttikten sonra başlat.</span>
+        <button onclick={start} disabled={starting}>{starting ? "Başlatılıyor…" : "Başlat"}</button>
+      </div>
+    {/if}
+
     {#if failure}
       <p class="error" role="alert">Ayarlar okunamadı: {failure}</p>
     {:else if snap}
@@ -76,6 +98,10 @@
   .dot { color: var(--accent); }
   .lede { color: var(--muted); margin: 8px 0 22px; }
   .error { color: var(--danger); }
+  .banner {
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    padding: 10px 0 10px 12px; margin-bottom: 22px; border-left: 2px solid var(--accent);
+  }
 
   @media (max-width: 760px) {
     .layout { grid-template-columns: 1fr; }

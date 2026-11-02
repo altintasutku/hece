@@ -14,19 +14,19 @@ License: MIT
 
 ## Install (Windows)
 
-1. Build the zip (`powershell -File scripts/package.ps1`, it includes the CUDA runtime DLLs,
-   `-NoCuda` leaves them out) or use a release zip, unpack it and run
+1. Build the zip (`powershell -ExecutionPolicy Bypass -File scripts/package.ps1`; it includes the
+   CUDA runtime DLLs, `-NoCuda` leaves them out) or use a release zip, unpack it and run
    `powershell -ExecutionPolicy Bypass -File install.ps1`. It installs to
-   `%LOCALAPPDATA%\Programs\Hece` (no administrator rights), adds a Start menu entry and turns on
-   autostart (`-NoAutostart` skips that).
+   `%LOCALAPPDATA%\Programs\Hece` (no administrator rights), adds **Hece** and **Hece Ayarlar** to
+   the Start menu and turns on autostart (`-NoAutostart` skips that).
 2. Local transcription needs an NVIDIA GPU and the Whisper model:
    `uv run prepare_model.py <dir>` (install.ps1 prints the suggested `<dir>`) converts the
    Turkish fine-tuned large-v3 (`turkmedstt/whisper-large-v3-turkish-general`, pinned and
    checksummed).
    Without the CUDA runtime, use a cloud provider instead.
-3. `hece config` prints the config path (a commented template is created on first run). Set
-   `[provider] model_dir`, or a cloud provider and its key (`hece key set <name>` stores it in the
-   Windows Credential Manager).
+3. Open **Hece Ayarlar** and set the model folder, or a cloud provider and its key (stored in the
+   Windows Credential Manager). It writes `config.toml` (`hece config` prints the path) and keeps
+   your comments. If Hece starts before this is set, it opens the settings window itself.
 4. Start Hece from the Start menu. Hold **Ctrl+Shift+Space** and speak; release to insert.
    **Ctrl+Shift+Backspace** cancels. The tray icon (Windows may tuck it under "show hidden icons")
    shows the state and has the menu.

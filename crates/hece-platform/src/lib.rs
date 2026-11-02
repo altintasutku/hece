@@ -2,7 +2,10 @@
 //! Ctrl+V, the focused window, the daemon control pipe, toasts and autostart. Other platforms
 //! have no implementation yet.
 
+mod i18n;
 pub mod overlay;
+
+pub use i18n::{Lang, menu_label, tray_status, ui_language};
 
 #[cfg(windows)]
 mod windows;

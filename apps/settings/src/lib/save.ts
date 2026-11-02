@@ -1,5 +1,5 @@
 import { setValues, type Snapshot, type Value } from "./api";
-import { savedNote } from "./strings";
+import { t } from "./strings";
 
 export type Note = { text: string; error: boolean };
 
@@ -8,7 +8,7 @@ export async function save(snap: Snapshot, changes: Record<string, Value>): Prom
   try {
     const answer = await setValues(changes);
     Object.assign(snap.values, changes);
-    return savedNote(answer);
+    return t.savedNote(answer);
   } catch (e) {
     return { text: String(e), error: true };
   }

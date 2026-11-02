@@ -12,14 +12,14 @@ machine.
 ## Quick start (settings window)
 
 1. Get an API key (see the provider below).
-2. Open **Hece Ayarlar** → **Sağlayıcı**.
-3. **Motor**: pick **Groq (bulut)**, **OpenAI (bulut)** or **Deepgram (bulut)**. The address,
+2. Open **Hece Settings** → **Provider**.
+3. **Engine**: pick **Groq (cloud)**, **OpenAI (cloud)** or **Deepgram (cloud)**. The address,
    model and name are filled in for you.
-4. **API anahtarı** → **Anahtar ekle**, paste the key, **Kaydet**. It is stored in the Windows
+4. **API key** → **Add key**, paste the key, **Save**. It is stored in the Windows
    Credential Manager (entry named after the provider: `groq`, `openai`, `deepgram`) and never
    shown again or written to `config.toml`.
-5. **Dil**: leave **Otomatik algıla** to let the provider detect the language, or pin `Türkçe` /
-   `İngilizce` (pinning is faster and more accurate for short sentences).
+5. **Language**: leave **Auto-detect** to let the provider detect the language, or pin one
+   (pinning is faster and more accurate for short sentences).
 6. Every change reloads the running daemon. If Hece is not running, start it from the Start menu.
    Hold **Ctrl+Shift+Space**, speak, release.
 
@@ -133,15 +133,15 @@ text.
 Run with the release build and a real Groq key; repeat the first block for OpenAI/Deepgram if you
 have keys.
 
-1. Fresh state: **Motor** → **Groq (bulut)**. Check `config.toml`: `kind = "openai"`,
+1. Fresh state: **Engine** → **Groq (cloud)**. Check `config.toml`: `kind = "openai"`,
    `name = "groq"`, the Groq `base_url`, `model = "whisper-large-v3"`, `segments = true`, no
    `language` line.
-2. **Anahtar ekle** → paste → **Kaydet** shows "Kaydedildi". Credential Manager has a `groq`
+2. **Add key** → paste → **Save** shows "Saved". Credential Manager has a `groq`
    entry; `hece.log` does not contain the key.
 3. Dictate a Turkish sentence (e.g. "Yarın saat üçte toplantı var, notları paylaşır mısın?")
    into Notepad: inserted, Turkish characters correct.
-4. Dictate an English sentence ("Please send the report by Friday.") with **Dil** on
-   **Otomatik algıla**: inserted in English, not translated.
+4. Dictate an English sentence ("Please send the report by Friday.") with **Language** on
+   **Auto-detect**: inserted in English, not translated.
 5. Note the latency of the first and later dictations (the 2026-11-02 sandbox run measured
    2.76 s, then 0.73 s).
 6. Bad key: store `gsk_invalid` → dictate → `Not inserted: groq: the API key was rejected
@@ -149,5 +149,5 @@ have keys.
    restarting Hece.
 7. Offline: turn off Wi-Fi/Ethernet → dictate → `provider_network` (or `provider_timeout`) toast,
    nothing inserted. Reconnect → works again.
-8. Switch **Motor** to **Deepgram (bulut)** and back to **Groq**: `config.toml` has no stale
+8. Switch **Engine** to **Deepgram (cloud)** and back to **Groq**: `config.toml` has no stale
    `base_url`/`name` from the other provider, and the key row shows the right stored state.

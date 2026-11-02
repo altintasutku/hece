@@ -2,7 +2,7 @@
   import Row from "./Row.svelte";
   import type { Snapshot, Value } from "./api";
   import type { Note } from "./save";
-  import { daemonText, updates } from "./strings";
+  import { t } from "./strings";
 
   interface Props {
     snap: Snapshot;
@@ -17,23 +17,20 @@
   }
 </script>
 
-<Row label="Hece" help={daemonText(snap.daemon)}>
-  <span class="muted">Durum</span>
+<Row label="Hece" help={t.daemonText(snap.daemon)}>
+  <span class="muted">{t.about.status}</span>
 </Row>
-<Row label="Ayar dosyası" help={snap.config}>
-  <span class="muted">Yorumlar korunur</span>
+<Row label={t.about.configFile} help={snap.config}>
+  <span class="muted">{t.about.commentsKept}</span>
 </Row>
-<Row label={updates.label} help={updates.help} {note}>
+<Row label={t.about.updates} help={t.about.updatesHelp} {note}>
   <input type="checkbox" checked={snap.values["updates.check"] !== false}
     onchange={(e) => toggleUpdates(e.currentTarget.checked)} />
 </Row>
 
-<p class="quote">Her ayar hemen kaydedilir; Hece çalışıyorsa yeniden yüklenir.</p>
+<p class="quote">{t.about.quote}</p>
 
 <style>
-  .muted { color: var(--muted); font-size: 12.5px; }
-  .quote {
-    margin-top: 22px; padding-left: 12px; border-left: 2px solid var(--accent);
-    font: italic 400 19px/1.35 var(--serif);
-  }
+  .muted { color: var(--mute); font-size: 12.5px; }
+  .quote { padding: 14px 0 16px; border-top: 1px solid var(--hairline); color: var(--body); }
 </style>

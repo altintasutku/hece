@@ -2,6 +2,9 @@
   import Row from "./Row.svelte";
   import type { Snapshot, Value } from "./api";
   import type { Note } from "./save";
+  import { t } from "./strings";
+
+  const s = t.shortcuts;
 
   interface Props {
     snap: Snapshot;
@@ -17,46 +20,42 @@
   const minutes = $derived(Math.round(((snap.values["recording.max_seconds"] as number | null) ?? 600) / 60));
 </script>
 
-<Row label="Kaydet" help="Windows'un kullanmadığı bir kısayol; şimdilik değiştirilemez">
-  <span class="chip">Ctrl</span><span class="chip">Shift</span><span class="chip">Space</span>
+<Row label={s.record} help={s.recordHelp}>
+  <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd>
 </Row>
 
-<Row label="Vazgeç" help="Süren kaydı ya da son dikteyi iptal eder">
-  <span class="chip">Ctrl</span><span class="chip">Shift</span><span class="chip">Backspace</span>
+<Row label={s.cancel} help={s.cancelHelp}>
+  <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Backspace</kbd>
 </Row>
 
-<Row label="Kayıt biçimi" help="Basılı tut: bırakınca biter. Bas-bas: ikinci basışta biter." note={notes.mode}>
+<Row label={s.mode} help={s.modeHelp} note={notes.mode}>
   <select value={snap.values["recording.mode"] ?? "hold"}
     onchange={(e) => change("mode", { "recording.mode": e.currentTarget.value })}>
-    <option value="hold">Basılı tut</option>
-    <option value="toggle">Bas-bas</option>
+    <option value="hold">{s.hold}</option>
+    <option value="toggle">{s.toggle}</option>
   </select>
 </Row>
 
-<Row label="Mikrofon" help="Varsayılan, Windows'un seçtiği giriş aygıtıdır" note={notes.device}>
+<Row label={s.microphone} help={s.microphoneHelp} note={notes.device}>
   <select value={snap.values["recording.device"] ?? ""}
     onchange={(e) => change("device", { "recording.device": e.currentTarget.value || null })}>
-    <option value="">Windows varsayılanı</option>
+    <option value="">{s.windowsDefault}</option>
     {#each snap.devices as device (device)}
       <option value={device}>{device}</option>
     {/each}
   </select>
 </Row>
 
-<Row label="Kayıt göstergesi" help="Kayıt sırasında ekranın sağ üstünde sese tepki veren küre" note={notes.overlay}>
+<Row label={s.overlay} help={s.overlayHelp} note={notes.overlay}>
   <input type="checkbox" checked={snap.values["ui.overlay"] !== false}
     onchange={(e) => change("overlay", { "ui.overlay": e.currentTarget.checked })} />
 </Row>
 
-<Row label="En uzun kayıt" help="Bu süreden sonra kayıt kendiliğinden biter (en çok 11 dk)" note={notes.max}>
+<Row label={s.maxLength} help={s.maxLengthHelp} note={notes.max}>
   <select value={minutes}
     onchange={(e) => change("max", { "recording.max_seconds": Number(e.currentTarget.value) * 60 })}>
     {#each [1, 2, 5, 10, 11] as m (m)}
-      <option value={m}>{m} dakika</option>
+      <option value={m}>{s.minutes(m)}</option>
     {/each}
   </select>
 </Row>
-
-<style>
-  .chip { font: 500 12px/1 var(--sans); border: 1px solid var(--ink); padding: 3px 7px; }
-</style>

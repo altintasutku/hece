@@ -1783,6 +1783,8 @@ dependencies = [
  "hece-platform",
  "hece-providers",
  "hound",
+ "hyper",
+ "hyper-util",
  "reqwest",
  "rpassword",
  "serde",

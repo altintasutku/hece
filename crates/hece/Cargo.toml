@@ -28,6 +28,8 @@ rpassword.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 axum.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 getrandom.workspace = true
 
 

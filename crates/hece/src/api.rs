@@ -7,6 +7,7 @@ use std::io::Cursor;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Multipart, State};
@@ -17,6 +18,11 @@ use hece_core::ipc::MAX_AUDIO_SAMPLES;
 use hece_core::{Transcript, Vocabulary};
 use hece_providers::{Cleaner, Providers};
 use serde_json::json;
+
+/// A client gets this long to send its request headers.
+const HEADER_TIMEOUT: Duration = Duration::from_secs(10);
+/// ... and this long to send the whole upload (25 MB over loopback takes well under a second).
+const BODY_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Largest accepted upload (`OpenAI`'s limit).
 pub const MAX_UPLOAD_BYTES: usize = 25 * 1024 * 1024;
@@ -118,7 +124,20 @@ struct Form {
     cleanup: bool,
 }
 
-async fn read_form(mut multipart: Multipart) -> Result<Form, Box<Response>> {
+/// Reads the multipart form within [`BODY_TIMEOUT`].
+async fn read_form(multipart: Multipart) -> Result<Form, Box<Response>> {
+    tokio::time::timeout(BODY_TIMEOUT, read_fields(multipart))
+        .await
+        .unwrap_or_else(|_| {
+            Err(Box::new(error(
+                StatusCode::REQUEST_TIMEOUT,
+                "upload_timeout",
+                "the upload took too long",
+            )))
+        })
+}
+
+async fn read_fields(mut multipart: Multipart) -> Result<Form, Box<Response>> {
     let mut form = Form::default();
     loop {
         let field = match multipart.next_field().await {
@@ -362,9 +381,28 @@ pub fn token(path: &Path) -> anyhow::Result<String> {
 pub async fn serve(state: Arc<ApiState>, port: u16) -> anyhow::Result<SocketAddr> {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     let addr = listener.local_addr()?;
+    let app = router(state);
     tokio::spawn(async move {
-        if let Err(e) = axum::serve(listener, router(state)).await {
-            tracing::error!(kind = ?e.kind(), "local API stopped");
+        loop {
+            let stream = match listener.accept().await {
+                Ok((stream, _)) => stream,
+                Err(e) => {
+                    tracing::warn!(kind = ?e.kind(), "local API accept failed");
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+            };
+            let service = hyper_util::service::TowerToHyperService::new(app.clone());
+            tokio::spawn(async move {
+                // A client that never finishes its headers is dropped instead of holding a task.
+                let conn = hyper::server::conn::http1::Builder::new()
+                    .timer(hyper_util::rt::TokioTimer::new())
+                    .header_read_timeout(HEADER_TIMEOUT)
+                    .serve_connection(hyper_util::rt::TokioIo::new(stream), service);
+                if let Err(e) = conn.await {
+                    tracing::debug!(error = %e, "local API connection ended");
+                }
+            });
         }
     });
     Ok(addr)

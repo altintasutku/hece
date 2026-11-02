@@ -193,6 +193,12 @@ pub(crate) fn parse_json<T: serde::de::DeserializeOwned>(
     })
 }
 
+/// The language to send: `None` (auto-detect) when unset or blank, because providers reject
+/// an empty `language` field instead of detecting.
+pub(crate) fn requested_language(language: Option<&str>) -> Option<&str> {
+    language.map(str::trim).filter(|l| !l.is_empty())
+}
+
 /// Keeps a language value only when it looks like a code (`en`, `tr`, `haw`); some servers
 /// return names such as `english`.
 pub(crate) fn language_code(value: Option<&str>) -> Option<String> {

@@ -18,3 +18,7 @@
 /.cache/
 # Brainstorm companion scratch files
 /.superpowers/
+# Installer inputs staged by scripts/build-release.ps1
+/apps/settings/src-tauri/binaries/
+# Agent worktrees
+/.claude/worktrees/

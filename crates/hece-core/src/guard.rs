@@ -5,6 +5,31 @@
 //! control characters (a pasted newline can run a command in a terminal), or changed length
 //! sharply, so the caller can insert the raw text instead. Reasons carry no text, so
 //! they are safe to log.
+//!
+//! # Negation coverage
+//!
+//! Negations are counted per word (letters, digits and apostrophes; text folded first, so
+//! accents do not matter). One list serves all languages, so no language setting is needed.
+//! A false positive only costs a rejected cleanup (the raw text is inserted), but words a
+//! cleanup routinely removes as fillers or tags are left out.
+//!
+//! | Language | Counted | Out of scope |
+//! | --- | --- | --- |
+//! | Turkish | `değil…`, `yok…`, `hiç…`, `hayır`, `asla` | verb suffix `-me/-ma` (`gitme`) |
+//! | English | `not`, `no`, `never`, `cannot`, `…n't`, `nothing`, `nobody`, `none`, `neither`, `nor`, `without` | `un-`/`in-` prefixes |
+//! | Spanish | `no`, `nunca`, `jamás`, `nada`, `nadie`, `ni`, `ningún/ninguno/ninguna`, `tampoco`, `sin` | |
+//! | Portuguese | `não`, `nunca`, `jamais`, `nada`, `ninguém`, `nenhum/nenhuma`, `nem`, `tampouco`, `sem` | tag `né` (a filler) |
+//! | French | `pas`, `non`, `jamais`, `rien`, `aucun/aucune`, `ni`, `sans` | `ne`/`n'` (spoken French drops it, so `pas` carries the negation); `plus`, `personne` (ambiguous) |
+//! | Italian | `non`, `mai`, `niente`, `nulla`, `nessun/nessuno/nessuna`, `neanche`, `nemmeno`, `neppure`, `senza` | `né` (folds to the pronoun `ne`) |
+//! | German | `nicht`, `nie`, `niemals`, `nein`, `nichts`, `kein…`, `niemand…`, `nirgend…`, `weder`, `ohne` | tag `ne` (a filler) |
+//! | Dutch | `niet`, `geen`, `nooit`, `niets`, `niks`, `niemand`, `nergens`, `nee`, `zonder` | |
+//! | Polish | `nie`, `nigdy`, `nic`, `nikt`, `nikogo`, `nikomu`, `nigdzie`, `żaden/żadna/żadne`, `ani`, `bez` | `nie` written together with adjectives (`niedobry`); the filler `no` ("well") counts as `no`, so a cleanup that removes it is rejected |
+//! | Russian | `не`, `нет`, `ни`, `никогда`, `ничего`, `ничто`, `никто`, `никого`, `никому`, `нигде`, `никуда`, `никак`, `нельзя`, `без` | `не` written together (`небольшой`) |
+//! | Ukrainian | `не`, `ні`, `ніколи`, `нічого`, `ніхто`, `без` | |
+//!
+//! Not covered: Chinese and Japanese (no spaces, so `不`/`没` and verb endings like `ない`
+//! sit inside longer tokens), Korean (`안`/`못` and `-지 않다` endings), Arabic, Hindi and
+//! Indonesian. For these only the empty, control and length checks apply.
 
 use std::sync::LazyLock;
 
@@ -64,29 +89,46 @@ const LENGTH_SLACK: f64 = 8.0;
 static TOKEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[\p{L}\p{N}'’]+").expect("valid regex literal"));
 
+/// Folded negation words, grouped by the first language that uses them (see module docs).
+#[rustfmt::skip]
+const NEGATION_WORDS: &[&str] = &[
+    // tr
+    "hayir", "asla",
+    // en
+    "not", "no", "never", "cannot", "nothing", "nobody", "none", "neither", "nor", "without",
+    // es (also "no")
+    "nunca", "jamas", "nada", "nadie", "ni", "ningun", "ninguno", "ninguna", "tampoco", "sin",
+    // pt
+    "nao", "jamais", "ninguem", "nenhum", "nenhuma", "nem", "tampouco", "sem",
+    // fr (also "jamais", "ni")
+    "pas", "non", "rien", "aucun", "aucune", "sans",
+    // it (also "non")
+    "mai", "niente", "nulla", "nessun", "nessuno", "nessuna", "neanche", "nemmeno", "neppure",
+    "senza",
+    // de (also NEGATION_PREFIXES)
+    "nicht", "nie", "niemals", "nein", "nichts", "weder", "ohne",
+    // nl ("niemand" is a prefix)
+    "niet", "geen", "nooit", "niets", "niks", "nergens", "nee", "zonder",
+    // pl (also "nie")
+    "nigdy", "nic", "nikt", "nikogo", "nikomu", "nigdzie", "zaden", "zadna", "zadne", "ani",
+    "bez",
+    // ru
+    "не", "нет", "ни", "никогда", "ничего", "ничто", "никто", "никого", "никому", "нигде",
+    "никуда", "никак", "нельзя", "без",
+    // uk (also "не", "без")
+    "ні", "ніколи", "нічого", "ніхто",
+];
+
+/// Folded prefixes that start a negation word (`değilim`, `yoktu`, `hiçbir`, `keine`, …).
+const NEGATION_PREFIXES: &[&str] = &["degil", "yok", "hic", "kein", "niemand", "nirgend"];
+
 /// Whether a folded word is a word-level negation token (the guard's predicate).
 #[must_use]
 pub fn is_negation_token(token: &str) -> bool {
-    token.starts_with("degil")
-        || token.starts_with("yok")
-        || token.ends_with("n't")
+    token.ends_with("n't")
         || token.ends_with("n’t")
-        || token.starts_with("hic")
-        || matches!(
-            token,
-            "hayir"
-                | "asla"
-                | "not"
-                | "no"
-                | "never"
-                | "cannot"
-                | "nothing"
-                | "nobody"
-                | "none"
-                | "neither"
-                | "nor"
-                | "without"
-        )
+        || NEGATION_PREFIXES.iter().any(|p| token.starts_with(p))
+        || NEGATION_WORDS.contains(&token)
 }
 
 /// Counts negation tokens in `text` (folded, same tokenizer the guard uses).
@@ -105,12 +147,11 @@ fn letter_count(text: &str) -> usize {
 
 /// Decides whether the LLM-cleaned text may replace the raw transcript.
 ///
-/// Checks, in order: empty output, added line breaks or control characters, dropped negations, too short, too long. Only
-/// Turkish word-level negation (`değil…`, `yok…`, `hiç…`, `hayır`, `asla`) and English
-/// negations (`not`, `no`, `never`, `cannot`, `n't`, `nothing`, `nobody`, `none`,
-/// `neither`, `nor`, `without`) are detected; Turkish verb negation (`-me/-ma`) is out
-/// of scope. The `yok` and `hic` prefixes also match some non-negations (e.g. `yoksa`,
-/// `hiciv`); this errs on the safe side, since a rejection just inserts the raw text.
+/// Checks, in order: empty output, added line breaks or control characters, dropped
+/// negations, too short, too long. Negations are the word-level tokens listed in the module
+/// docs. Some match non-negations (the `yok`/`hic` prefixes in `yoksa`, `hiciv`, Spanish
+/// `hice`; Turkish `anı` folds to Polish `ani`); this errs on the safe side, since a
+/// rejection just inserts the raw text.
 #[must_use]
 pub fn cleanup_guard(raw: &str, cleaned: &str) -> GuardVerdict {
     let raw_letters = letter_count(raw);
@@ -182,6 +223,51 @@ mod tests {
             assert_eq!(
                 cleanup_guard(raw, cleaned),
                 GuardVerdict::Reject(RejectReason::NegationDropped),
+                "{raw:?} -> {cleaned:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn multilingual_dropped_negations_are_rejected() {
+        let cases = [
+            ("eh no quiero ir hoy", "Quiero ir hoy."),
+            ("pues nunca lo vi", "Pues lo vi."),
+            ("äh das ist nicht richtig", "Das ist richtig."),
+            ("ich habe keine Zeit", "Ich habe Zeit."),
+            ("euh je sais pas trop", "Je sais trop."),
+            ("ele não sabe disso", "Ele sabe disso."),
+            ("ehm non è vero", "È vero."),
+            ("dat klopt niet hoor", "Dat klopt hoor."),
+            ("to nie jest prawda", "To jest prawda."),
+            ("ну это не так", "Это так."),
+            ("я нічого не знаю", "Я не знаю."),
+        ];
+        for (raw, cleaned) in cases {
+            assert_eq!(
+                cleanup_guard(raw, cleaned),
+                GuardVerdict::Reject(RejectReason::NegationDropped),
+                "{raw:?} -> {cleaned:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn multilingual_filler_cleanups_are_accepted() {
+        let cases = [
+            ("eh o sea no quiero ir hoy", "No quiero ir hoy."),
+            ("äh also das ist nicht richtig", "Das ist nicht richtig."),
+            ("euh ben je ne sais pas", "Je ne sais pas."),
+            ("tipo ele não sabe disso né", "Ele não sabe disso, né?"),
+            ("ehm allora non è vero", "Allora, non è vero."),
+            ("nou dat klopt niet", "Dat klopt niet."),
+            ("no to nie jest prawda", "No, to nie jest prawda."),
+            ("ну это не так", "Это не так."),
+        ];
+        for (raw, cleaned) in cases {
+            assert_eq!(
+                cleanup_guard(raw, cleaned),
+                GuardVerdict::Accept,
                 "{raw:?} -> {cleaned:?}"
             );
         }

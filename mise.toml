@@ -4,6 +4,8 @@ rust = "1.94"
 cmake = "4.4"
 # Settings app frontend (apps/settings).
 bun = "1.4.4"
+# Third-party license notices for the installer (scripts/build-release.ps1).
+"cargo:cargo-about" = { version = "0.9.3", features = "cli" }
 
 [env]
 # Model downloads stay inside the project (deleted with it).

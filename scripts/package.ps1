@@ -1,13 +1,13 @@
 # Builds a Windows release zip: hece.exe, hecew.exe, hece-engine.exe, hece-settings.exe and the
 # install scripts.
 #
-#   powershell -File scripts/package.ps1 [-BundleCuda]
+#   powershell -File scripts/package.ps1 [-NoCuda]
 #
-# -BundleCuda copies the CUDA runtime DLLs the engine needs (cudart, cuBLAS; ~600 MB, allowed by
-# the CUDA EULA's redistribution list) so the target machine needs only the NVIDIA driver.
-# Without it, the target needs the CUDA Toolkit runtime on PATH. The Whisper model is never
-# bundled; scripts/prepare_model.py prepares it.
-param([switch]$BundleCuda)
+# The CUDA runtime DLLs the engine needs (cudart, cuBLAS; ~600 MB, allowed by the CUDA EULA's
+# redistribution list) are included, so the target machine needs only the NVIDIA driver.
+# -NoCuda leaves them out; the target then needs the CUDA Toolkit runtime on PATH. The Whisper
+# model is never bundled; scripts/prepare_model.py prepares it.
+param([switch]$NoCuda)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -34,7 +34,7 @@ foreach ($exe in 'hece.exe', 'hecew.exe', 'hece-engine.exe', 'hece-settings.exe'
 Copy-Item scripts\windows\install.ps1, scripts\windows\uninstall.ps1, scripts\prepare_model.py, scripts\prepare_model.py.lock $stage
 Copy-Item README.md, LICENSE $stage
 
-if ($BundleCuda) {
+if (-not $NoCuda) {
     $cuda = Get-ChildItem 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA' -Directory |
         Sort-Object Name -Descending | Select-Object -First 1
     foreach ($dll in 'cudart64_13.dll', 'cublas64_13.dll', 'cublasLt64_13.dll') {

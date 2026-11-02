@@ -74,7 +74,7 @@ pub struct BenchArgs {
     /// `CTranslate2` model directory.
     #[arg(long)]
     pub model: PathBuf,
-    /// Path of the `hece-engine` binary (default: next to this binary, then `PATH`).
+    /// Path of the `hece-engine` binary (default: next to this binary).
     #[arg(long)]
     pub engine: Option<PathBuf>,
     /// Vocabulary file (one term per line).
@@ -114,7 +114,7 @@ pub struct ProviderArgs {
     /// `CTranslate2` model directory for the local engine.
     #[arg(long, conflicts_with = "api_base")]
     pub model: Option<PathBuf>,
-    /// Path of the `hece-engine` binary (default: next to this binary, then `PATH`).
+    /// Path of the `hece-engine` binary (default: next to this binary).
     #[arg(long)]
     pub engine: Option<PathBuf>,
     /// Base URL of an OpenAI-compatible API, e.g. `https://api.openai.com/v1`.

@@ -35,9 +35,35 @@ fn environment() -> Result<Environment, EngineError> {
     if let Some(env) = env.as_ref() {
         return Ok(env.clone());
     }
-    let built = ort::init().build().map_err(vad_err)?;
+    let built = builder()?.build().map_err(vad_err)?;
     *env = Some(built.clone());
     Ok(built)
+}
+
+/// Windows release builds load `onnxruntime.dll` at run time: only from next to the engine or
+/// from System32, never through the DLL search path (current directory, `PATH`).
+#[cfg(all(windows, feature = "ort-dynamic"))]
+fn builder() -> Result<ort::environment::EnvironmentBuilder, EngineError> {
+    let beside = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join("onnxruntime.dll")));
+    let system = std::env::var_os("SystemRoot")
+        .map(|root| std::path::PathBuf::from(root).join(r"System32\onnxruntime.dll"));
+    let path = beside
+        .into_iter()
+        .chain(system)
+        .find(|p| p.is_file())
+        .ok_or_else(|| vad_err("onnxruntime.dll not found next to hece-engine or in System32"))?;
+    ort::init_from(path).map_err(vad_err)
+}
+
+#[cfg(not(all(windows, feature = "ort-dynamic")))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "same signature as the run-time loading variant"
+)]
+fn builder() -> Result<ort::environment::EnvironmentBuilder, EngineError> {
+    Ok(ort::init())
 }
 
 /// The Silero VAD model. `Send`, so it can live in a worker thread; inference needs `&mut self`.

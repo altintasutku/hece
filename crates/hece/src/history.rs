@@ -73,12 +73,25 @@ impl History {
         entries.push(entry);
         let excess = entries.len().saturating_sub(self.max_entries);
         entries.drain(..excess);
+        self.write(&entries)
+    }
+
+    /// Drops what fell out of the limits even if nobody dictates (run at daemon start).
+    pub fn prune(&self) -> std::io::Result<()> {
+        if self.path.exists() {
+            self.write(&self.entries())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn write(&self, entries: &[Entry]) -> std::io::Result<()> {
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir)?;
         }
         let tmp = self.path.with_extension("jsonl.tmp");
         let mut file = private_file(&tmp)?;
-        for e in &entries {
+        for e in entries {
             serde_json::to_writer(&mut file, e)?;
             file.write_all(b"\n")?;
         }

@@ -14,7 +14,7 @@ use crate::config::{CleanupKind, CleanupSection, Config, KeyRef, ProviderConfig,
 
 /// Everything a dictation needs besides the audio.
 pub struct Setup {
-    pub providers: Providers,
+    pub providers: Arc<Providers>,
     /// The local engine, if any provider uses it (for prewarm and shutdown).
     pub engine: Option<Arc<EngineClient>>,
     pub vocabulary: Option<Arc<Vocabulary>>,
@@ -104,7 +104,11 @@ pub fn setup(cfg: &Config) -> anyhow::Result<Setup> {
         .as_ref()
         .map(|f| build(f, &mut engine))
         .transpose()?;
-    let providers = Providers::new(primary, fallback, cfg.transcription.allow_cloud_fallback)?;
+    let providers = Arc::new(Providers::new(
+        primary,
+        fallback,
+        cfg.transcription.allow_cloud_fallback,
+    )?);
     Ok(Setup {
         providers,
         engine,

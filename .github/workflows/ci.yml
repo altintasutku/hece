@@ -27,7 +27,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Same toolchain as mise.toml, so a lint that passes locally passes here (Renovate bumps both).
+      - uses: dtolnay/rust-toolchain@1.94
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2

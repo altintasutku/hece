@@ -1,0 +1,40 @@
+/* Tokens and base styles from DESIGN.md (Dizgi). */
+:root {
+  --paper: #fbfaf7;
+  --ink: #111111;
+  --muted: #757575;
+  --hairline: #e0e0e0;
+  --accent: #057dbc;
+  --danger: #b3261e;
+  --field: #ffffff;
+  --serif: "Instrument Serif", Georgia, serif;
+  --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 14px/1.4 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+select { max-width: 300px; text-overflow: ellipsis; }
+select, input, button {
+  font: 500 13px/1.2 var(--sans);
+  color: var(--ink);
+  background: var(--field);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 7px 10px;
+}
+button { cursor: pointer; }
+button:hover:not(:disabled), select:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+:is(select, input, button, a, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(select, input, button):disabled { border-color: var(--hairline); color: var(--muted); cursor: default; }
+input[type="checkbox"] {
+  appearance: none; width: 16px; height: 16px; padding: 0; display: inline-grid; place-content: center;
+}
+input[type="checkbox"]:checked::after { content: ""; width: 8px; height: 8px; background: var(--ink); }

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "apps/settings/src-tauri"]
 
 [workspace.package]
 edition = "2024"
@@ -74,6 +74,8 @@ cpal = "0.18.2"
 rubato = "5.0.1"
 # Daemon: config file, hidden key prompt, Windows toasts.
 toml = "1.1.8"
+# Edits config.toml from the settings app without dropping comments.
+toml_edit = "0.25.17"
 rpassword = "7.5.4"
 tauri-winrt-notification = "0.8.1"
 # Local OpenAI-compatible API.

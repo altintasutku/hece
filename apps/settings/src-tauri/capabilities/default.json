@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The settings window may only call Hece's own commands.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

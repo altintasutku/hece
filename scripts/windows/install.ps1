@@ -11,11 +11,11 @@ $target = Join-Path $env:LOCALAPPDATA 'Programs\Hece'
 
 # Only this session's copies: another signed-in user's Hece is theirs (and not ours to stop).
 $session = (Get-Process -Id $PID).SessionId
-Get-Process hecew, hece, hece-engine -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session | Stop-Process -Force
+Get-Process hecew, hece, hece-engine, hece-settings -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session | Stop-Process -Force
 New-Item -ItemType Directory -Force $target | Out-Null
 # Only the files the release ships: anything else in this folder (say, a DLL in Downloads) must
 # not end up next to the executables, which load DLLs from their own folder first.
-$shipped = 'hece.exe', 'hecew.exe', 'hece-engine.exe', 'install.ps1', 'uninstall.ps1',
+$shipped = 'hece.exe', 'hecew.exe', 'hece-engine.exe', 'hece-settings.exe', 'install.ps1', 'uninstall.ps1',
     'prepare_model.py', 'prepare_model.py.lock', 'README.md', 'LICENSE', 'cudart64_13.dll', 'cublas64_13.dll', 'cublasLt64_13.dll'
 foreach ($file in $shipped) {
     $path = Join-Path $source $file

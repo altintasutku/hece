@@ -15,7 +15,7 @@ into the focused window. Windows first; Linux and macOS later.
 | `crates/hece-audio` | Microphone capture (cpal) and resampling to 16 kHz mono; needs `libasound2-dev` on Linux |
 | `crates/hece-platform` | Windows: global hotkey, clipboard + paste, focused window |
 | `crates/hece` | Daemon + CLI binary |
-| `apps/settings` | Tauri 2 settings UI (not created yet) |
+| `apps/settings` | Settings window: Tauri 2 (`src-tauri`, crate `hece-settings`, Windows-only) + Svelte 5/Vite; edits `config.toml` via `hece::settings`, then asks the daemon to `reload`. Visual rules in `DESIGN.md` |
 
 ## Commands
 
@@ -28,6 +28,8 @@ cargo test --workspace
 ```
 
 - Run the daemon/CLI: `cargo run -p hece`
+- Settings app (in `apps/settings`, bun from `mise.toml`): `bun install`, `bun run check` (types + Svelte),
+  `bunx tauri dev` (window against the Vite dev server), `bunx tauri build --no-bundle` (release exe)
 - Turkish model (CTranslate2, into `.cache/models`): `uv run scripts/prepare_model.py`
 - Engine with CUDA on Windows: `powershell -File scripts/build-engine.ps1` (release `hece` + `hece-engine`; +crt-static, onnxruntime.dll loaded at run time)
 - Engine with CUDA on Linux: `CUDA_ARCH_LIST="8.9;12.0" CMAKE_BUILD_PARALLEL_LEVEL=4 CARGO_BUILD_JOBS=4 cargo build -p hece-engine --features cuda-dynamic`

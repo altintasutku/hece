@@ -22,6 +22,7 @@ mod paths;
 mod providers;
 #[cfg(windows)]
 mod run;
+pub mod settings;
 
 use std::process::ExitCode;
 

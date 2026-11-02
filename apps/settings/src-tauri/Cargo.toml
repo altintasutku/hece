@@ -1,0 +1,25 @@
+[package]
+name = "hece-settings"
+description = "Hece settings window (Tauri 2)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+hece = { path = "../../../crates/hece" }
+tauri = { version = "2.12.5", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+
+[features]
+# `tauri build` turns this on: the release window serves the embedded frontend from dist/.
+custom-protocol = ["tauri/custom-protocol"]

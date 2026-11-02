@@ -60,6 +60,9 @@ max_days = 7
 
 [ui]
 overlay = true             # animated sphere in the top-right corner while recording
+
+[updates]
+check = true               # once a day, ask GitHub for a newer release (one GET, nothing about you is sent)
 "#;
 
 /// The whole file.
@@ -74,6 +77,7 @@ pub struct Config {
     pub api: ApiConfig,
     pub history: HistoryConfig,
     pub ui: UiConfig,
+    pub updates: UpdatesConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -343,6 +347,18 @@ impl Default for UiConfig {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct UpdatesConfig {
+    pub check: bool,
+}
+
+impl Default for UpdatesConfig {
+    fn default() -> Self {
+        Self { check: true }
+    }
+}
+
 /// Config problems; messages name the file and the field.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -471,6 +487,14 @@ mod tests {
     fn ui_overlay_can_be_off() {
         let cfg: Config = toml::from_str("[ui]\noverlay = false\n").unwrap();
         assert!(!cfg.ui.overlay);
+    }
+
+    #[test]
+    fn update_check_defaults_on() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert!(cfg.updates.check);
+        let cfg: Config = toml::from_str("[updates]\ncheck = false\n").unwrap();
+        assert!(!cfg.updates.check);
     }
 
     #[test]

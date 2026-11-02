@@ -28,6 +28,7 @@ const KEYS: &[&str] = &[
     "recording.device",
     "recording.max_seconds",
     "ui.overlay",
+    "updates.check",
 ];
 
 /// Sections whose provider may have a key in the keyring.

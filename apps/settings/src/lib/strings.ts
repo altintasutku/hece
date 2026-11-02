@@ -28,6 +28,12 @@ export const sections: Section[] = [
   },
 ];
 
+/** The update check row (the only network call Hece makes on its own). */
+export const updates = {
+  label: "Yeni sürüm denetimi",
+  help: "Günde bir kez GitHub'a yeni sürüm olup olmadığını sorar; senin hakkında hiçbir şey göndermez",
+};
+
 /** What the row shows after a save, by the daemon's reload answer. */
 export function savedNote(answer: string): { text: string; error: boolean } {
   switch (answer) {

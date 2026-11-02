@@ -81,7 +81,7 @@
       {:else if current.id === "shortcuts"}
         <Shortcuts {snap} save={saveTo} />
       {:else}
-        <About {snap} />
+        <About {snap} save={saveTo} />
       {/if}
     {/if}
   </main>

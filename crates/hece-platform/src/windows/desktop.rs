@@ -25,6 +25,10 @@ pub const CANCEL_SHORTCUT: &str = "Ctrl+Shift+Backspace";
 
 /// Thread message carrying a [`TrayState`] in `wParam`.
 const WM_TRAY_STATE: u32 = WM_APP + 1;
+/// Thread message: a label waits on the update channel.
+const WM_TRAY_UPDATE: u32 = WM_APP + 2;
+/// Menu id of the update entry (the fixed entries use their index in [`MENU`]).
+const UPDATE_ID: &str = "update";
 const ICON_SIZE: u32 = 32;
 
 const MENU: [(MenuAction, &str); 6] = [
@@ -41,6 +45,7 @@ const MENU: [(MenuAction, &str); 6] = [
 pub struct Desktop {
     thread_id: u32,
     thread: Option<JoinHandle<()>>,
+    updates: mpsc::Sender<String>,
 }
 
 impl Desktop {
@@ -51,14 +56,16 @@ impl Desktop {
         handler: impl Fn(DesktopEvent) + Send + Sync + 'static,
     ) -> Result<Self, PlatformError> {
         let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<u32, PlatformError>>(1);
+        let (updates, updates_rx) = mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("hece-desktop".to_owned())
-            .spawn(move || run(handler, &ready_tx))
+            .spawn(move || run(handler, &ready_tx, &updates_rx))
             .map_err(|_| PlatformError::Hotkey)?;
         match ready_rx.recv() {
             Ok(Ok(thread_id)) => Ok(Self {
                 thread_id,
                 thread: Some(thread),
+                updates,
             }),
             Ok(Err(e)) => {
                 let _ = thread.join();
@@ -76,6 +83,32 @@ impl Desktop {
         // SAFETY: posting a message to a thread id has no memory-safety preconditions; if the
         // thread is gone the call just fails.
         unsafe { PostThreadMessageW(self.thread_id, WM_TRAY_STATE, state as usize, 0) };
+    }
+
+    /// Shows (or relabels) a first menu entry `label`; choosing it reports
+    /// [`MenuAction::Update`].
+    pub fn offer_update(&self, label: &str) {
+        if self.updates.send(label.to_owned()).is_ok() {
+            // SAFETY: as in `set_state`; the label travels on the channel, not in the message.
+            unsafe { PostThreadMessageW(self.thread_id, WM_TRAY_UPDATE, 0, 0) };
+        }
+    }
+}
+
+/// Adds the update entry on top of the menu, or relabels it.
+fn show_update(menu: &Menu, item: &mut Option<MenuItem>, label: &str) {
+    if let Some(item) = item {
+        item.set_text(label);
+        return;
+    }
+    let entry = MenuItem::with_id(UPDATE_ID, label, true, None);
+    let added = menu
+        .insert(&entry, 0)
+        .and_then(|()| menu.insert(&PredefinedMenuItem::separator(), 1));
+    if added.is_ok() {
+        *item = Some(entry);
+    } else {
+        tracing::debug!("update menu entry could not be added");
     }
 }
 
@@ -131,7 +164,7 @@ fn icon(state: TrayState) -> Option<Icon> {
     Icon::from_rgba(rgba, size, size).ok()
 }
 
-fn tray() -> Option<TrayIcon> {
+fn tray() -> Option<(TrayIcon, Menu)> {
     let menu = Menu::new();
     for (i, (action, label)) in MENU.iter().enumerate() {
         if *action == MenuAction::Settings || *action == MenuAction::Quit {
@@ -141,17 +174,26 @@ fn tray() -> Option<TrayIcon> {
             .ok()?;
     }
     let mut builder = TrayIconBuilder::new()
-        .with_menu(Box::new(menu))
+        .with_menu(Box::new(menu.clone()))
         .with_tooltip(tooltip(TrayState::Idle));
     if let Some(icon) = icon(TrayState::Idle) {
         builder = builder.with_icon(icon);
     }
-    builder.build().ok()
+    Some((builder.build().ok()?, menu))
+}
+
+fn menu_action(id: &str) -> Option<MenuAction> {
+    if id == UPDATE_ID {
+        return Some(MenuAction::Update);
+    }
+    let i = id.parse::<usize>().ok()?;
+    MENU.get(i).map(|(action, _)| *action)
 }
 
 fn run(
     handler: impl Fn(DesktopEvent) + Send + Sync + 'static,
     ready: &mpsc::SyncSender<Result<u32, PlatformError>>,
+    updates: &mpsc::Receiver<String>,
 ) {
     let mods = Some(Modifiers::CONTROL | Modifiers::SHIFT);
     let record = HotKey::new(mods, Code::Space);
@@ -187,16 +229,11 @@ fn run(
         }));
     }));
     MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
-        if let Some((action, _)) = e
-            .id()
-            .as_ref()
-            .parse::<usize>()
-            .ok()
-            .and_then(|i| MENU.get(i))
-        {
-            handler(DesktopEvent::Menu(*action));
+        if let Some(action) = menu_action(e.id().as_ref()) {
+            handler(DesktopEvent::Menu(action));
         }
     }));
+    let mut update_item = None;
     // SAFETY: GetCurrentThreadId has no preconditions.
     let thread_id = unsafe { GetCurrentThreadId() };
     let _ = ready.send(Ok(thread_id));
@@ -206,10 +243,18 @@ fn run(
     // messages. GetMessageW returns 0 on WM_QUIT and -1 on error, both end the loop.
     while unsafe { GetMessageW(&raw mut msg, std::ptr::null_mut(), 0, 0) } > 0 {
         if msg.hwnd.is_null() && msg.message == WM_TRAY_STATE {
-            if let Some(tray) = &tray {
+            if let Some((tray, _)) = &tray {
                 let state = state_from(msg.wParam);
                 let _ = tray.set_icon(icon(state));
                 let _ = tray.set_tooltip(Some(tooltip(state)));
+            }
+            continue;
+        }
+        if msg.hwnd.is_null() && msg.message == WM_TRAY_UPDATE {
+            while let Ok(label) = updates.try_recv() {
+                if let Some((_, menu)) = &tray {
+                    show_update(menu, &mut update_item, &label);
+                }
             }
             continue;
         }

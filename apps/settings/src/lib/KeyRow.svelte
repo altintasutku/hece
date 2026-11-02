@@ -7,8 +7,10 @@
     section: string;
     stored: boolean;
     onchange: () => void;
+    /** Where to get the key; the default only says where it is kept. */
+    help?: string;
   }
-  let { section, stored, onchange }: Props = $props();
+  let { section, stored, onchange, help = t.key.help }: Props = $props();
 
   let editing = $state(false);
   let secret = $state("");
@@ -26,7 +28,7 @@
   }
 </script>
 
-<Row label={t.key.label} help={t.key.help} {note}>
+<Row label={t.key.label} {help} {note}>
   {#if editing}
     <input type="password" autocomplete="off" placeholder={t.key.placeholder} bind:value={secret}
       onkeydown={(e) => e.key === "Enter" && secret && run(() => storeKey(section, secret))} />

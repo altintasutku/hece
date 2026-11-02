@@ -21,6 +21,7 @@ const KEYS: &[&str] = &[
     "provider.base_url",
     "provider.model",
     "provider.key",
+    "provider.segments",
     "transcription.language",
     "transcription.allow_cloud_fallback",
     "recording.mode",

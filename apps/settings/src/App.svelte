@@ -4,11 +4,13 @@
   import Shortcuts from "./lib/Shortcuts.svelte";
   import { snapshot, startDaemon, type Snapshot, type Value } from "./lib/api";
   import { save } from "./lib/save";
-  import { sections, type Section } from "./lib/strings";
+  import { t, type Section } from "./lib/strings";
+
+  const sections = t.sections;
 
   let snap: Snapshot | null = $state(null);
   let failure: string | null = $state(null);
-  let current: Section = $state(sections[0]);
+  let current: Section = $state(sections.find((s) => `#${s.id}` === location.hash) ?? sections[0]);
 
   async function refresh() {
     try {
@@ -21,7 +23,7 @@
   refresh();
 
   async function saveTo(changes: Record<string, Value>) {
-    return snap ? save(snap, changes) : { text: "Ayarlar henüz okunmadı", error: true };
+    return snap ? save(snap, changes) : { text: t.notLoaded, error: true };
   }
 
   let starting = $state(false);
@@ -47,13 +49,13 @@
 <svelte:window {onkeydown} />
 
 <div class="layout">
-  <nav aria-label="Bölümler">
+  <nav aria-label={t.navLabel}>
     {#each sections as s (s.id)}
       <a href={`#${s.id}`} class:on={s.id === current.id} aria-current={s.id === current.id ? "page" : undefined}
         onclick={(e) => { e.preventDefault(); current = s; }}>{s.nav}</a>
     {/each}
   </nav>
-  <select class="nav-select" aria-label="Bölüm" value={current.id}
+  <select class="nav-select" aria-label={t.navSelectLabel} value={current.id}
     onchange={(e) => (current = sections.find((s) => s.id === e.currentTarget.value) ?? current)}>
     {#each sections as s (s.id)}
       <option value={s.id}>{s.nav}</option>
@@ -68,13 +70,13 @@
 
     {#if snap?.daemon === "not_running"}
       <div class="banner" role="status">
-        <span>Hece çalışmıyor. Ayarları düzelttikten sonra başlat.</span>
-        <button onclick={start} disabled={starting}>{starting ? "Başlatılıyor…" : "Başlat"}</button>
+        <span>{t.notRunning}</span>
+        <button onclick={start} disabled={starting}>{starting ? t.starting : t.start}</button>
       </div>
     {/if}
 
     {#if failure}
-      <p class="error" role="alert">Ayarlar okunamadı: {failure}</p>
+      <p class="error" role="alert">{t.readFailed(failure)}</p>
     {:else if snap}
       {#if current.id === "provider"}
         <Provider {snap} save={saveTo} {refresh} />

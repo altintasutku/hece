@@ -15,6 +15,8 @@ mod config;
 mod dictate;
 mod history;
 #[cfg(windows)]
+mod i18n;
+#[cfg(windows)]
 mod logging;
 mod longform;
 pub mod models;
@@ -64,11 +66,11 @@ pub fn background_main() -> ExitCode {
             // A new or broken config is fixed in the settings window, so open it right away.
             if e.downcast_ref::<ConfigError>().is_some() && open_settings() {
                 hece_platform::notify(
-                    "Hece needs setup",
-                    "Settings are open: set the model folder or a cloud provider, then press Başlat.",
+                    &i18n::Toast::NeedsSetupTitle.to_string(),
+                    &i18n::Toast::NeedsSetup.to_string(),
                 );
             } else {
-                hece_platform::notify("Hece could not start", &format!("{e:#}"));
+                hece_platform::notify(&i18n::Toast::NotStartedTitle.to_string(), &format!("{e:#}"));
             }
             return ExitCode::from(EXIT_SETUP);
         }

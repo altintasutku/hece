@@ -22,9 +22,12 @@ foreach ($file in $shipped) {
     if (Test-Path $path) { Copy-Item $path -Destination $target -Force }
 }
 
+$programs = [Environment]::GetFolderPath('Programs')
+# The settings shortcut was called "Hece Ayarlar" before v0.1.0.
+Remove-Item -Force (Join-Path $programs 'Hece Ayarlar.lnk') -ErrorAction SilentlyContinue
 $shell = New-Object -ComObject WScript.Shell
-foreach ($entry in @(('Hece.lnk', 'hecew.exe', 'Hece voice dictation'), ('Hece Ayarlar.lnk', 'hece-settings.exe', 'Hece settings'))) {
-    $link = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) $entry[0]))
+foreach ($entry in @(('Hece.lnk', 'hecew.exe', 'Hece voice dictation'), ('Hece Settings.lnk', 'hece-settings.exe', 'Hece Settings'))) {
+    $link = $shell.CreateShortcut((Join-Path $programs $entry[0]))
     $link.TargetPath = Join-Path $target $entry[1]
     $link.WorkingDirectory = $target
     $link.Description = $entry[2]
@@ -41,4 +44,4 @@ if (-not (Test-Path (Join-Path $target 'cublas64_13.dll')) -and -not $cudaOnPath
 }
 Write-Output "Installed to $target"
 $models = Join-Path $env:LOCALAPPDATA 'hece\models\large-v3-turkish'
-Write-Output "Next: prepare the model (uv run `"$target\prepare_model.py`" `"$models`"), set the model folder in Hece Ayarlar (or [provider] model_dir = '$models' in $config), then start Hece from the Start menu."
+Write-Output "Next: prepare the model (uv run `"$target\prepare_model.py`" `"$models`"), set the model folder in Hece Settings (or [provider] model_dir = '$models' in $config), then start Hece from the Start menu."

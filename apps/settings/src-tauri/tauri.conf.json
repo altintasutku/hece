@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "hece — Ayarlar",
+        "title": "Hece Settings",
         "width": 900,
         "height": 640,
         "minWidth": 720,

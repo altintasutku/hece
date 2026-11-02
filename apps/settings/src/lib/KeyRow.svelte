@@ -1,7 +1,7 @@
 <script lang="ts">
   import { deleteKey, storeKey } from "./api";
   import Row from "./Row.svelte";
-  import { savedNote } from "./strings";
+  import { t } from "./strings";
 
   interface Props {
     section: string;
@@ -16,7 +16,7 @@
 
   async function run(action: () => Promise<string>) {
     try {
-      note = savedNote(await action());
+      note = t.savedNote(await action());
       editing = false;
       secret = "";
       onchange();
@@ -26,18 +26,18 @@
   }
 </script>
 
-<Row label="API anahtarı" help="Windows Kimlik Bilgisi Yöneticisi'nde saklanır, burada gösterilmez" {note}>
+<Row label={t.key.label} help={t.key.help} {note}>
   {#if editing}
-    <input type="password" autocomplete="off" placeholder="Anahtarı yapıştır" bind:value={secret}
+    <input type="password" autocomplete="off" placeholder={t.key.placeholder} bind:value={secret}
       onkeydown={(e) => e.key === "Enter" && secret && run(() => storeKey(section, secret))} />
-    <button disabled={!secret} onclick={() => run(() => storeKey(section, secret))}>Kaydet</button>
-    <button onclick={() => { editing = false; secret = ""; }}>Vazgeç</button>
+    <button disabled={!secret} onclick={() => run(() => storeKey(section, secret))}>{t.key.save}</button>
+    <button onclick={() => { editing = false; secret = ""; }}>{t.key.cancel}</button>
   {:else if stored}
-    <span class="stored">Kayıtlı ✓</span>
-    <button onclick={() => (editing = true)}>Değiştir</button>
-    <button onclick={() => run(() => deleteKey(section))}>Sil</button>
+    <span class="stored">{t.key.stored}</span>
+    <button onclick={() => (editing = true)}>{t.key.change}</button>
+    <button onclick={() => run(() => deleteKey(section))}>{t.key.remove}</button>
   {:else}
-    <button onclick={() => (editing = true)}>Anahtar ekle</button>
+    <button onclick={() => (editing = true)}>{t.key.add}</button>
   {/if}
 </Row>
 

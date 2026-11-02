@@ -3,6 +3,7 @@
   import Row from "./Row.svelte";
   import { cancelDownload, downloadModel, type Snapshot, type Value } from "./api";
   import type { Note } from "./save";
+  import { t } from "./strings";
 
   interface Props {
     snap: Snapshot;
@@ -29,7 +30,6 @@
       "provider.model": text("provider.model") || "whisper-1",
     };
   }
-  const languages: [string, string][] = [["tr", "Türkçe"], ["en", "İngilizce"], ["", "Otomatik algıla"]];
 
   // The model in use: the catalog entry whose folder model_dir points at, else the first
   // downloaded one (what the daemon picks when model_dir is empty), else a custom folder.
@@ -45,12 +45,12 @@
   let failure: string | null = $state(null);
   const modelHelp = $derived(
     percent !== null
-      ? `İndiriliyor… %${percent}`
+      ? t.provider.downloading(percent)
       : failure
-        ? `İndirilemedi (${failure}); tekrar denersen kaldığı yerden devam eder`
+        ? t.provider.downloadFailed(failure)
         : selected && !selected.installed
-          ? `Bir kez indirilir (${(selected.size_mb / 1000).toFixed(1)} GB), sonra internetsiz çalışır`
-          : "Konuşmayı bu bilgisayarda, ekran kartında yazıya çevirir",
+          ? t.provider.downloadOnce((selected.size_mb / 1000).toFixed(1))
+          : t.provider.localHelp,
   );
 
   async function pick(id: string) {
@@ -76,43 +76,43 @@
   }
 </script>
 
-<Row label="Motor" help="Yerel: Türkçe Whisper, ekran kartında. Bulut: anahtar gerekir." note={notes.kind}>
+<Row label={t.provider.engine} help={t.provider.engineHelp} note={notes.kind}>
   <select value={v("provider.kind") ?? "local"} onchange={(e) => change("kind", kindChanges(e.currentTarget.value))}>
-    <option value="local">Yerel (GPU)</option>
-    <option value="openai">OpenAI uyumlu</option>
+    <option value="local">{t.provider.local}</option>
+    <option value="openai">{t.provider.openai}</option>
     <option value="deepgram">Deepgram</option>
   </select>
 </Row>
 
 {#if (v("provider.kind") ?? "local") === "local"}
-  <Row label="Model" help={modelHelp} note={notes.model}>
+  <Row label={t.provider.model} help={modelHelp} note={notes.model}>
     <select value={chosen} disabled={percent !== null}
       onchange={(e) => pick(e.currentTarget.value)}>
       {#each snap.models as m (m.id)}
         <option value={m.id}>{m.name}{m.installed ? "" : ` · ${(m.size_mb / 1000).toFixed(1)} GB`}</option>
       {/each}
       {#if chosen === "custom"}
-        <option value="custom">Kendi klasörün</option>
+        <option value="custom">{t.provider.customFolder}</option>
       {/if}
     </select>
     {#if percent !== null}
-      <button onclick={cancelDownload}>Vazgeç</button>
+      <button onclick={cancelDownload}>{t.provider.cancel}</button>
     {:else if selected && !selected.installed}
-      <button onclick={() => download(selected.id)}>İndir</button>
+      <button onclick={() => download(selected.id)}>{t.provider.download}</button>
     {/if}
   </Row>
 {/if}
 
 {#if v("provider.kind") === "openai"}
-  <Row label="Adres" help="OpenAI, Groq ya da yerel bir sunucu (…/v1)" note={notes.url}>
+  <Row label={t.provider.url} help={t.provider.urlHelp} note={notes.url}>
     <input class="path" value={text("provider.base_url")} spellcheck="false"
       onchange={(e) => change("url", { "provider.base_url": e.currentTarget.value.trim() })} />
   </Row>
-  <Row label="Model" help="Sağlayıcının model adı, örneğin whisper-large-v3" note={notes.modelName}>
+  <Row label={t.provider.model} help={t.provider.modelNameHelp} note={notes.modelName}>
     <input value={text("provider.model")} spellcheck="false"
       onchange={(e) => change("modelName", { "provider.model": e.currentTarget.value.trim() })} />
   </Row>
-  <Row label="Ad" help="Mesajlarda ve anahtar kaydında görünür" note={notes.name}>
+  <Row label={t.provider.name} help={t.provider.nameHelp} note={notes.name}>
     <input value={text("provider.name")} placeholder="openai" spellcheck="false"
       onchange={(e) => change("name", { "provider.name": e.currentTarget.value.trim() || null })} />
   </Row>
@@ -122,16 +122,16 @@
   <KeyRow section="provider" stored={snap.keys.provider ?? false} onchange={refresh} />
 {/if}
 
-<Row label="Dil" help="Konuştuğun dil; otomatik algılama daha yavaş ve hatalı olabilir" note={notes.lang}>
+<Row label={t.provider.language} help={t.provider.languageHelp} note={notes.lang}>
   <select value={text("transcription.language")}
     onchange={(e) => change("lang", { "transcription.language": e.currentTarget.value || null })}>
-    {#each languages as [code, name] (code)}
+    {#each t.provider.languages as [code, name] (code)}
       <option value={code}>{name}</option>
     {/each}
   </select>
 </Row>
 
-<Row label="Buluta yedekle" help="Yerel motor çalışmazsa bulut yedeğine geçmeye izin ver" note={notes.fallback}>
+<Row label={t.provider.fallback} help={t.provider.fallbackHelp} note={notes.fallback}>
   <input type="checkbox" checked={v("transcription.allow_cloud_fallback") === true}
     onchange={(e) => change("fallback", { "transcription.allow_cloud_fallback": e.currentTarget.checked })} />
 </Row>

@@ -27,6 +27,7 @@ use tokio::task::JoinHandle;
 
 use crate::config::{Config, RecordMode};
 use crate::history::{self, Entry, History};
+use crate::i18n::Toast;
 use crate::output;
 use crate::providers::{Setup, setup};
 
@@ -315,12 +316,12 @@ impl Daemon {
                         .spawn()
                         .is_ok();
                 if !opened {
-                    self.fail("Could not open the config file.");
+                    self.fail(&Toast::ConfigOpenFailed.to_string());
                 }
             }
             MenuAction::Logs => {
                 if hece_platform::open(&self.state_dir).is_err() {
-                    self.fail("Could not open the log folder.");
+                    self.fail(&Toast::LogsOpenFailed.to_string());
                 }
             }
             MenuAction::Quit => self.quit = true,
@@ -330,14 +331,14 @@ impl Daemon {
 
     async fn repaste(&mut self, raw: bool) {
         let Some(history) = self.history.clone() else {
-            self.fail("History is disabled, so there is nothing to paste again.");
+            self.fail(&Toast::HistoryDisabled.to_string());
             return;
         };
         let entries = tokio::task::spawn_blocking(move || history.entries())
             .await
             .unwrap_or_default();
         let Some(last) = entries.last() else {
-            self.fail("History is empty.");
+            self.fail(&Toast::HistoryEmpty.to_string());
             return;
         };
         let text = if raw {
@@ -348,7 +349,7 @@ impl Daemon {
         tokio::time::sleep(MENU_CLOSE).await;
         let pasted = tokio::task::spawn_blocking(move || hece_platform::insert(&text, None)).await;
         if !matches!(pasted, Ok(Ok(Inserted::Pasted))) {
-            self.fail("Could not paste again.");
+            self.fail(&Toast::RepasteFailed.to_string());
         }
     }
 
@@ -373,14 +374,11 @@ impl Daemon {
                     None
                 }
                 CaptureEvent::LimitReached => {
-                    self.alert(
-                        TrayState::Warning,
-                        "Recording limit reached; transcribing what was recorded.",
-                    );
+                    self.alert(TrayState::Warning, &Toast::LimitReached.to_string());
                     Some(Input::LimitReached)
                 }
                 CaptureEvent::StreamError { code } => {
-                    self.fail(&format!("Microphone error ({code}); stopping."));
+                    self.fail(&Toast::MicrophoneError(code).to_string());
                     Some(Input::LimitReached)
                 }
             },
@@ -426,15 +424,17 @@ impl Daemon {
                     tracing::warn!(from = %notice.from, to = %notice.to, reason = %notice.reason, "fell back");
                     self.alert(
                         TrayState::Warning,
-                        &format!(
-                            "{} failed ({}); {} transcribed this dictation.",
-                            notice.from, notice.reason, notice.to
-                        ),
+                        &Toast::FellBack {
+                            from: &notice.from,
+                            reason: &notice.reason,
+                            to: &notice.to,
+                        }
+                        .to_string(),
                     );
                 }
                 if dictation.transcript.text.is_empty() {
                     self.failures
-                        .insert(id, (Outcome::NothingHeard, "Nothing heard.".to_owned()));
+                        .insert(id, (Outcome::NothingHeard, Toast::NothingHeard.to_string()));
                     false
                 } else {
                     self.results.insert(id, dictation);
@@ -443,7 +443,7 @@ impl Daemon {
             }
             Err(e) => {
                 tracing::warn!(code = e.code(), "transcription failed");
-                let why = format!("Not inserted: {e} ({})", e.code());
+                let why = Toast::NotInserted(&e, e.code()).to_string();
                 self.failures.insert(id, (Outcome::Failed, why));
                 false
             }
@@ -513,7 +513,7 @@ impl Daemon {
         let (outcome, why) = self
             .failures
             .remove(&id)
-            .unwrap_or_else(|| (fallback, "Nothing heard.".to_owned()));
+            .unwrap_or_else(|| (fallback, Toast::NothingHeard.to_string()));
         self.outcome = Some(outcome);
         self.fail(&why);
     }
@@ -660,10 +660,7 @@ impl Daemon {
             });
         }
         if let Some(code) = &dictation.cleanup_skipped {
-            self.alert(
-                TrayState::Warning,
-                &format!("Cleanup skipped ({code}); inserted the raw transcript."),
-            );
+            self.alert(TrayState::Warning, &Toast::CleanupSkipped(code).to_string());
         }
         let text = dictation.text().to_owned();
         let chars = text.chars().count();
@@ -681,18 +678,17 @@ impl Daemon {
         });
         match result {
             Ok(Ok(Inserted::Pasted)) if low => {
-                self.alert(TrayState::Warning, "Inserted, but it may be misheard.");
+                self.alert(TrayState::Warning, &Toast::MayBeMisheard.to_string());
             }
             Ok(Ok(Inserted::Pasted)) => output::status(&format!("inserted {chars} characters")),
-            Ok(Ok(Inserted::FocusChanged)) => self.alert(
-                TrayState::Warning,
-                "Focus changed, so nothing was pasted. The text is on the clipboard (Ctrl+V).",
-            ),
+            Ok(Ok(Inserted::FocusChanged)) => {
+                self.alert(TrayState::Warning, &Toast::FocusChanged.to_string());
+            }
             Ok(Err(e)) => {
                 tracing::warn!(code = e.code(), "insert failed");
                 self.fail(&format!("{e} ({})", e.code()));
             }
-            Err(_) => self.fail("Insert failed."),
+            Err(_) => self.fail(&Toast::InsertFailed.to_string()),
         }
     }
 }
@@ -795,10 +791,7 @@ fn prewarm(engine: Arc<EngineClient>) {
         output::status("loading the local model…");
         match engine.prewarm().await {
             Ok(()) => output::status("model loaded"),
-            Err(e) => toast(&format!(
-                "The local model could not be loaded: {e} ({})",
-                e.code()
-            )),
+            Err(e) => toast(&Toast::ModelNotLoaded(&e, e.code()).to_string()),
         }
     });
 }
@@ -822,10 +815,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         && let Err(e) = start_api(&cfg, &paths, &setup).await
     {
         tracing::error!(error = %e, port = cfg.api.port, "local API did not start");
-        toast(&format!(
-            "local API did not start on port {} (in use?); dictation still works",
-            cfg.api.port
-        ));
+        toast(&Toast::ApiNotStarted(cfg.api.port).to_string());
     }
     let (tx, mut rx) = mpsc::unbounded_channel();
     let desktop_tx = tx.clone();

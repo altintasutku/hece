@@ -6,8 +6,12 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use hece::settings;
+use std::ops::ControlFlow;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use hece::{models, settings};
 use serde_json::{Map, Value};
+use tauri::ipc::Channel;
 
 /// Every config value the window shows or edits.
 const KEYS: &[&str] = &[
@@ -35,6 +39,7 @@ struct Snapshot {
     /// Section -> whether its provider has a key stored (absent sections are left out).
     keys: Map<String, Value>,
     devices: Vec<String>,
+    models: Vec<ModelInfo>,
     daemon: String,
 }
 
@@ -63,6 +68,7 @@ async fn snapshot() -> Result<Snapshot, String> {
         values,
         keys,
         devices: settings::devices(),
+        models: models(),
         daemon: settings::status().await,
     })
 }
@@ -93,6 +99,77 @@ async fn delete_key(section: String) -> Result<String, String> {
     Ok(settings::reload().await)
 }
 
+/// A catalog model as the window shows it.
+#[derive(Debug, serde::Serialize)]
+struct ModelInfo {
+    id: &'static str,
+    name: &'static str,
+    /// Download size in MB.
+    size_mb: u64,
+    /// Folder it is (or will be) downloaded to.
+    path: String,
+    installed: bool,
+}
+
+fn models() -> Vec<ModelInfo> {
+    let Ok(dir) = models::models_dir() else {
+        return Vec::new();
+    };
+    models::CATALOG
+        .iter()
+        .map(|m| ModelInfo {
+            id: m.id,
+            name: m.name,
+            size_mb: m.size() / 1_000_000,
+            path: dir.join(m.id).display().to_string(),
+            installed: models::installed(m, &dir),
+        })
+        .collect()
+}
+
+/// Set while a download runs; clearing it cancels the download.
+static DOWNLOADING: AtomicBool = AtomicBool::new(false);
+
+/// Downloads a catalog model (resuming an earlier attempt), reporting the percentage on
+/// `progress`, then makes it the local model. Returns the daemon's reload answer, or an error
+/// code.
+#[tauri::command]
+async fn download_model(id: String, progress: Channel<u64>) -> Result<String, String> {
+    let model = models::find(&id).ok_or("unknown_model")?;
+    let dir = models::models_dir().map_err(|_| "model_disk_error")?;
+    if DOWNLOADING.swap(true, Ordering::SeqCst) {
+        return Err("model_download_running".to_owned());
+    }
+    let mut last = u64::MAX;
+    let result = models::download(&models::client(), models::HUB, model, &dir, |p| {
+        let percent = p.done * 100 / p.total.max(1);
+        if percent != last {
+            last = percent;
+            let _ = progress.send(percent);
+        }
+        if DOWNLOADING.load(Ordering::SeqCst) {
+            ControlFlow::Continue(())
+        } else {
+            ControlFlow::Break(())
+        }
+    })
+    .await;
+    DOWNLOADING.store(false, Ordering::SeqCst);
+    let path = result.map_err(|e| e.code().to_owned())?;
+    let changes = [(
+        "provider.model_dir",
+        Value::from(path.display().to_string()),
+    )];
+    settings::set(&config()?, &changes)?;
+    Ok(settings::reload().await)
+}
+
+/// Cancels a running download; what arrived is kept for the next try.
+#[tauri::command]
+fn cancel_download() {
+    DOWNLOADING.store(false, Ordering::SeqCst);
+}
+
 /// Starts the daemon (`hecew.exe`, installed next to this window).
 #[tauri::command]
 fn start_daemon() -> Result<(), String> {
@@ -114,7 +191,9 @@ fn main() -> ExitCode {
             set_values,
             store_key,
             delete_key,
-            start_daemon
+            start_daemon,
+            download_model,
+            cancel_download
         ])
         .run(tauri::generate_context!());
     if run.is_ok() {

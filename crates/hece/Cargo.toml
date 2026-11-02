@@ -32,7 +32,10 @@ axum.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 getrandom.workspace = true
+reqwest.workspace = true
+sha2 = "0.10.9"
 
 
 [dev-dependencies]
+wiremock.workspace = true
 reqwest.workspace = true

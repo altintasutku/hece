@@ -25,7 +25,7 @@ allow_cloud_fallback = false   # a local provider may fall back to a cloud one o
 
 [provider]
 kind = "local"             # local | openai | deepgram
-model_dir = 'C:\path\to\large-v3-turkish-ec03ccf-int8' # scripts/prepare_model.py output
+# model_dir = 'C:\models\my-model'  # default: the model downloaded in Settings (hece model download)
 # engine = 'C:\path\to\hece-engine.exe'                 # default: next to hece.exe
 
 # OpenAI-compatible example (OpenAI, Groq, speaches, whisper.cpp server):
@@ -179,19 +179,28 @@ impl ProviderConfig {
         }
     }
 
+    /// The local model folder: `model_dir` if set, else the first downloaded catalog model.
+    pub fn local_model(&self) -> Option<PathBuf> {
+        self.model_dir.clone().or_else(|| {
+            let dir = crate::models::models_dir().ok()?;
+            downloaded_model(&dir)
+        })
+    }
+
     fn validate(&self, section: &str) -> Result<(), String> {
         let missing =
             |field: &str| format!("[{section}] {field} is required for kind = {:?}", self.kind);
         let key = self.key_ref().map_err(|e| format!("[{section}] {e}"))?;
         match self.kind {
             ProviderKind::Local => {
-                let dir = self
-                    .model_dir
-                    .as_ref()
-                    .ok_or_else(|| missing("model_dir"))?;
+                let dir = self.local_model().ok_or_else(|| {
+                    format!(
+                        "[{section}] no local model: download one in Settings or with `hece model download`"
+                    )
+                })?;
                 if !dir.join("model.bin").is_file() {
                     return Err(format!(
-                        "[{section}] model_dir {} has no model.bin (run scripts/prepare_model.py)",
+                        "[{section}] model_dir {} has no model.bin",
                         dir.display()
                     ));
                 }
@@ -207,6 +216,14 @@ impl ProviderConfig {
         }
         Ok(())
     }
+}
+
+/// The first catalog model fully downloaded under `models_dir`.
+fn downloaded_model(models_dir: &Path) -> Option<PathBuf> {
+    crate::models::CATALOG
+        .iter()
+        .find(|m| crate::models::installed(m, models_dir))
+        .map(|m| models_dir.join(m.id))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -401,8 +418,10 @@ mod tests {
 
     #[test]
     fn template_parses_up_to_the_model_check() {
-        let err = Config::parse(TEMPLATE).unwrap_err();
-        assert!(err.contains("model.bin"), "{err}");
+        // Valid once a model is downloaded on this machine; otherwise it points at the download.
+        if let Err(err) = Config::parse(TEMPLATE) {
+            assert!(err.contains("hece model download"), "{err}");
+        }
     }
 
     #[test]

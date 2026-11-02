@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 export type Value = string | number | boolean | null;
 
@@ -8,6 +8,7 @@ export interface Snapshot {
   /** Section -> whether its provider has a key stored. */
   keys: Record<string, boolean>;
   devices: string[];
+  models: ModelInfo[];
   daemon: string;
 }
 
@@ -18,3 +19,20 @@ export const storeKey = (section: string, secret: string) =>
   invoke<string>("store_key", { section, secret });
 export const deleteKey = (section: string) => invoke<string>("delete_key", { section });
 export const startDaemon = () => invoke<void>("start_daemon");
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  size_mb: number;
+  /** Folder it is (or will be) downloaded to. */
+  path: string;
+  installed: boolean;
+}
+
+/** Downloads a model, reporting the percentage; resolves to the daemon's reload answer. */
+export function downloadModel(id: string, onPercent: (percent: number) => void) {
+  const progress = new Channel<number>();
+  progress.onmessage = onPercent;
+  return invoke<string>("download_model", { id, progress });
+}
+export const cancelDownload = () => invoke<void>("cancel_download");

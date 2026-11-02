@@ -62,6 +62,10 @@ checkbox) at least 3:1 (`#6b6e72`).
 - **Shortcut field:** the shortcut as key chips, then a ghost "Change" pill (and "Reset" when it is not the
   default). "Change" turns the control into a field with a 1 px `--violet` border that shows the held
   modifiers as chips and "Esc keeps the current one" in `--mute`; the first non-modifier key saves.
+- **Term list (vocabulary):** a full-width block inside the card, between rows: label and count on one line,
+  then numbered rows of a text input plus 32 px round ghost buttons (↑, ↓, ×). A skipped term gets a
+  `--danger` border and a reason line; a term past the length limit a `--mute` line. The whole list saves on
+  every change. Long controls (a file path) go on their own line under the row, not in the row's control slot.
 - **Status text:** "Stored ✓" or "Saved" in `--violet` (600). Errors in `--danger` with their stable code in
   parentheses.
 - **Banner:** `--surface-2` card above the settings card, text in `--ink`, a white pill action on the right.

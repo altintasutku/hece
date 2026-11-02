@@ -36,3 +36,28 @@ export function downloadModel(id: string, onPercent: (percent: number) => void) 
   return invoke<string>("download_model", { id, progress });
 }
 export const cancelDownload = () => invoke<void>("cancel_download");
+
+export type TermStatus = "ok" | "duplicate" | "invalid";
+
+/** How the vocabulary entries are used; `fit` is an estimate (at least this many fit). */
+export interface VocabularyCheck {
+  statuses: TermStatus[];
+  terms: number;
+  fit: number;
+}
+
+export interface VocabularyView {
+  path: string;
+  /** Whether config.toml names the file (otherwise the default next to it). */
+  custom: boolean;
+  entries: string[];
+  check: VocabularyCheck;
+}
+
+export const vocabulary = () => invoke<VocabularyView>("vocabulary");
+/** Saves the list; resolves to its check and the daemon's reload answer. */
+export const saveVocabulary = (entries: string[]) =>
+  invoke<[VocabularyCheck, string]>("save_vocabulary", { entries });
+export const importVocabulary = (path: string) => invoke<string[]>("import_vocabulary", { path });
+/** Switches to another file (`null`: the default); resolves to the daemon's reload answer. */
+export const useVocabularyFile = (path: string | null) => invoke<string>("use_vocabulary_file", { path });

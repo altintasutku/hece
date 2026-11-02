@@ -6,11 +6,11 @@ use anyhow::Context as _;
 use hece_core::Vocabulary;
 use hece_providers::engine_client::{EngineClient, EngineConfig, ProcessSpawner};
 use hece_providers::{
-    DeepgramConfig, DeepgramProvider, KeySource, KeyringStore, LocalProvider, OpenAiConfig,
-    OpenAiProvider, Provider, Providers,
+    Cleaner, CleanupApi, CleanupConfig, DeepgramConfig, DeepgramProvider, KeySource, KeyringStore,
+    LocalProvider, OpenAiConfig, OpenAiProvider, Provider, Providers,
 };
 
-use crate::config::{Config, KeyRef, ProviderConfig, ProviderKind};
+use crate::config::{CleanupKind, CleanupSection, Config, KeyRef, ProviderConfig, ProviderKind};
 
 /// Everything a dictation needs besides the audio.
 pub struct Setup {
@@ -20,23 +20,27 @@ pub struct Setup {
     pub vocabulary: Option<Arc<Vocabulary>>,
     pub language: Option<String>,
     pub prompt_tokens: usize,
+    /// The guarded LLM cleanup, when `[cleanup]` is configured.
+    pub cleaner: Option<Arc<Cleaner>>,
 }
 
 fn key(p: &ProviderConfig) -> anyhow::Result<Option<Arc<KeySource>>> {
-    let name = p.name();
-    Ok(match p.key_ref().map_err(anyhow::Error::msg)? {
+    Ok(key_source(
+        &p.name(),
+        p.key_ref().map_err(anyhow::Error::msg)?,
+    ))
+}
+
+fn key_source(name: &str, key: KeyRef) -> Option<Arc<KeySource>> {
+    match key {
         KeyRef::None => None,
-        KeyRef::Keyring => Some(Arc::new(KeySource::new(
-            &name,
-            None,
-            Arc::new(KeyringStore),
-        ))),
+        KeyRef::Keyring => Some(Arc::new(KeySource::new(name, None, Arc::new(KeyringStore)))),
         KeyRef::Env(var) => Some(Arc::new(KeySource::new(
-            &name,
+            name,
             Some(var),
             Arc::new(KeyringStore),
         ))),
-    })
+    }
 }
 
 /// One provider; `engine` is reused when both primary and fallback are local.
@@ -107,5 +111,35 @@ pub fn setup(cfg: &Config) -> anyhow::Result<Setup> {
         vocabulary: read_vocabulary(cfg)?,
         language: cfg.transcription.language.clone(),
         prompt_tokens: cfg.transcription.prompt_tokens,
+        cleaner: cfg.cleanup.as_ref().map(cleaner).transpose()?,
     })
+}
+
+fn cleaner(c: &CleanupSection) -> anyhow::Result<Arc<Cleaner>> {
+    let name = c.name();
+    let (api, base, model) = match c.kind {
+        CleanupKind::Anthropic => (
+            CleanupApi::Anthropic,
+            c.base_url
+                .clone()
+                .unwrap_or_else(|| hece_providers::cleanup::ANTHROPIC_BASE_URL.to_owned()),
+            c.model
+                .clone()
+                .unwrap_or_else(|| hece_providers::cleanup::ANTHROPIC_MODEL.to_owned()),
+        ),
+        CleanupKind::Openai => (
+            CleanupApi::OpenAiChat,
+            c.base_url.clone().context("base_url is required")?,
+            c.model.clone().context("model is required")?,
+        ),
+    };
+    let key = key_source(&name, c.key_ref().map_err(anyhow::Error::msg)?);
+    let cfg = CleanupConfig {
+        name,
+        api,
+        base_url: base,
+        model,
+        timeout: std::time::Duration::from_secs(c.timeout_seconds),
+    };
+    Ok(Arc::new(Cleaner::new(cfg, key)?))
 }

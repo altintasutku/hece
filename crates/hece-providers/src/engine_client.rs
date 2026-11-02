@@ -123,7 +123,7 @@ impl EngineClientError {
 /// How to reach and start the engine worker.
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
-    /// Explicit path of the `hece-engine` binary; otherwise next to the current exe, then `PATH`.
+    /// Explicit path of the `hece-engine` binary; otherwise next to the current exe.
     pub engine_path: Option<PathBuf>,
     /// Socket path of the worker; on Windows the worker listens on
     /// [`hece_core::ipc::pipe_name`] of this path.
@@ -191,14 +191,15 @@ impl ProcessSpawner {
                 Err(EngineClientError::EngineMissing)
             };
         }
-        let sibling = std::env::current_exe()
+        // Only next to this binary: a PATH lookup could pick up any hece-engine.
+        std::env::current_exe()
             .ok()
             .and_then(|exe| {
                 exe.parent()
                     .map(|d| d.join(format!("hece-engine{}", std::env::consts::EXE_SUFFIX)))
             })
-            .filter(|p| p.is_file());
-        Ok(sibling.unwrap_or_else(|| PathBuf::from("hece-engine")))
+            .filter(|p| p.is_file())
+            .ok_or(EngineClientError::EngineMissing)
     }
 }
 

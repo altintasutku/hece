@@ -594,6 +594,7 @@ async fn start_api(
         language: setup.language.clone(),
         prompt_tokens: setup.prompt_tokens,
         token: crate::api::token(&paths.state_dir.join("api-token"))?,
+        slots: tokio::sync::Semaphore::new(crate::api::MAX_CONCURRENT),
     });
     let addr = crate::api::serve(state, cfg.api.port).await?;
     tracing::info!(port = addr.port(), "local API listening");
@@ -601,6 +602,21 @@ async fn start_api(
         "local API on http://{addr}/v1 (token in api-token)"
     ));
     Ok(())
+}
+
+/// The history, with retention applied now: it must hold even when nobody dictates, and turning
+/// history off removes the old file.
+fn open_history(cfg: &Config, paths: &Paths) -> Option<History> {
+    let history = History::new(&paths.state_dir, &cfg.history);
+    let tidied = if cfg.history.enabled {
+        history.prune()
+    } else {
+        history.clear()
+    };
+    if let Err(e) = tidied {
+        tracing::warn!(kind = ?e.kind(), "history cleanup failed");
+    }
+    cfg.history.enabled.then_some(history)
 }
 
 /// Runs the daemon until Ctrl+C or "Quit" in the tray.
@@ -663,10 +679,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
             max_duration: Duration::from_secs(cfg.recording.max_seconds),
             ..CaptureConfig::default()
         },
-        history: cfg
-            .history
-            .enabled
-            .then(|| History::new(&paths.state_dir, &cfg.history)),
+        history: open_history(&cfg, &paths),
         config_file: paths.config_file,
         state_dir: paths.state_dir,
         desktop,

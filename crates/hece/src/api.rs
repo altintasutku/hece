@@ -29,7 +29,12 @@ pub struct ApiState {
     pub language: Option<String>,
     pub prompt_tokens: usize,
     pub token: String,
+    /// Transcriptions running at once; more get 503 instead of queueing audio in memory.
+    pub slots: tokio::sync::Semaphore,
 }
+
+/// Concurrent transcriptions the API accepts.
+pub const MAX_CONCURRENT: usize = 2;
 
 /// An `OpenAI`-style error body with a stable code.
 fn error(status: StatusCode, code: &str, message: &str) -> Response {
@@ -162,7 +167,14 @@ async fn read_form(mut multipart: Multipart) -> Result<Form, Box<Response>> {
     Ok(form)
 }
 
-async fn health() -> Response {
+async fn health(headers: HeaderMap) -> Response {
+    if !local_host(&headers) {
+        return error(
+            StatusCode::FORBIDDEN,
+            "bad_host",
+            "only local requests are served",
+        );
+    }
     axum::Json(json!({"status": "ok"})).into_response()
 }
 
@@ -185,6 +197,13 @@ async fn transcriptions(
             "missing or wrong bearer token",
         );
     }
+    let Ok(_slot) = state.slots.try_acquire() else {
+        return error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "busy",
+            "too many transcriptions at once; retry shortly",
+        );
+    };
     let form = match read_form(multipart).await {
         Ok(form) => form,
         Err(response) => return *response,
@@ -402,6 +421,7 @@ mod tests {
             language: None,
             prompt_tokens: 200,
             token: "t".repeat(64),
+            slots: tokio::sync::Semaphore::new(MAX_CONCURRENT),
         });
         let addr = serve(state, 0).await.unwrap();
         format!("http://127.0.0.1:{}", addr.port())

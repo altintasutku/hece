@@ -23,7 +23,7 @@ New-Item -ItemType Directory -Force $stage | Out-Null
 foreach ($exe in 'hece.exe', 'hecew.exe', 'hece-engine.exe') {
     Copy-Item "target\release\$exe" $stage
 }
-Copy-Item scripts\windows\install.ps1, scripts\windows\uninstall.ps1, scripts\prepare_model.py $stage
+Copy-Item scripts\windows\install.ps1, scripts\windows\uninstall.ps1, scripts\prepare_model.py, scripts\prepare_model.py.lock $stage
 Copy-Item README.md, LICENSE $stage
 
 if ($BundleCuda) {

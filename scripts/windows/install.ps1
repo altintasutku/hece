@@ -16,7 +16,7 @@ New-Item -ItemType Directory -Force $target | Out-Null
 # Only the files the release ships: anything else in this folder (say, a DLL in Downloads) must
 # not end up next to the executables, which load DLLs from their own folder first.
 $shipped = 'hece.exe', 'hecew.exe', 'hece-engine.exe', 'install.ps1', 'uninstall.ps1',
-    'prepare_model.py', 'README.md', 'LICENSE', 'cudart64_13.dll', 'cublas64_13.dll', 'cublasLt64_13.dll'
+    'prepare_model.py', 'prepare_model.py.lock', 'README.md', 'LICENSE', 'cudart64_13.dll', 'cublas64_13.dll', 'cublasLt64_13.dll'
 foreach ($file in $shipped) {
     $path = Join-Path $source $file
     if (Test-Path $path) { Copy-Item $path -Destination $target -Force }

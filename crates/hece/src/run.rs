@@ -9,13 +9,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use hece_audio::{AudioError, Capture, CaptureConfig, CaptureEvent, Recording};
+use hece_audio::{AudioError, Capture, CaptureConfig, CaptureEvent, Level, Recording};
 use hece_core::chunker::{ChunkPolicy, next_cut};
 use hece_core::recorder::{Action, Input, Mode, Recorder, RecordingId};
 use hece_core::{Transcript, Vocabulary};
+use hece_platform::overlay::{Outcome, Phase};
 use hece_platform::{
     CANCEL_SHORTCUT, ControlListener, ControlRequest, Desktop, DesktopEvent, HotkeyEvent, Inserted,
-    MenuAction, RECORD_SHORTCUT, Shortcut, TrayState, Window,
+    MenuAction, Overlay, RECORD_SHORTCUT, Shortcut, TrayState, Window,
 };
 use hece_providers::engine_client::EngineClient;
 use hece_providers::{Cleaner, FallbackNotice, ProviderError, ProviderRequest, Providers};
@@ -160,7 +161,8 @@ struct Daemon {
     results: HashMap<RecordingId, Dictation>,
     /// Chunks transcribed while recording, in order.
     chunks: HashMap<RecordingId, Vec<ChunkTask>>,
-    failures: HashMap<RecordingId, String>,
+    /// Why a job failed, with how the overlay shows it.
+    failures: HashMap<RecordingId, (Outcome, String)>,
     /// When each recording was stopped, for the stop-to-paste latency log.
     stopped: HashMap<RecordingId, Instant>,
     /// Whether the current recording's microphone delivers audio yet (Handy #1879: show
@@ -168,6 +170,12 @@ struct Daemon {
     mic_live: bool,
     /// A warning/error colour shown on the tray until the given time.
     flag: Option<(TrayState, Instant)>,
+    /// The capture level every recording publishes; the overlay reads it.
+    level: Level,
+    /// The recording overlay, when `[ui] overlay` is on.
+    overlay: Option<Overlay>,
+    /// How the last finished job ended, until the overlay plays it.
+    outcome: Option<Outcome>,
     quit: bool,
 }
 
@@ -284,7 +292,8 @@ impl Daemon {
         self.prompt_tokens = setup.prompt_tokens;
         self.mode = mode(cfg);
         self.recorder = Recorder::new(self.mode, MIN_SAMPLES);
-        self.capture_cfg = capture_config(cfg);
+        self.capture_cfg = capture_config(cfg, &self.level);
+        self.set_overlay(cfg.ui.overlay);
         self.history = open_history(cfg, &self.state_dir);
         if let Some(engine) = &setup.engine {
             prewarm(Arc::clone(engine));
@@ -424,7 +433,8 @@ impl Daemon {
                     );
                 }
                 if dictation.transcript.text.is_empty() {
-                    self.failures.insert(id, "Nothing heard.".to_owned());
+                    self.failures
+                        .insert(id, (Outcome::NothingHeard, "Nothing heard.".to_owned()));
                     false
                 } else {
                     self.results.insert(id, dictation);
@@ -433,8 +443,8 @@ impl Daemon {
             }
             Err(e) => {
                 tracing::warn!(code = e.code(), "transcription failed");
-                self.failures
-                    .insert(id, format!("Not inserted: {e} ({})", e.code()));
+                let why = format!("Not inserted: {e} ({})", e.code());
+                self.failures.insert(id, (Outcome::Failed, why));
                 false
             }
         }
@@ -473,6 +483,7 @@ impl Daemon {
                     let _ = stop.send(false);
                 }
                 self.drop_chunks(id);
+                self.outcome = Some(Outcome::Failed);
                 output::status("cancelled");
             }
             Action::Transcribe(id) => self.transcribe(id),
@@ -484,19 +495,47 @@ impl Daemon {
                 self.drop_chunks(id);
                 self.audio.remove(&id);
                 self.targets.remove(&id);
+                self.outcome = Some(Outcome::Failed);
                 output::status("cancelled");
             }
             Action::Insert(id) => self.insert(id).await,
-            Action::Failed(id) | Action::NothingHeard(id) => {
-                self.drop_chunks(id);
-                self.audio.remove(&id);
-                self.targets.remove(&id);
-                let why = self
-                    .failures
-                    .remove(&id)
-                    .unwrap_or_else(|| "Nothing heard.".to_owned());
-                self.fail(&why);
-            }
+            Action::Failed(id) => self.job_failed(id, Outcome::Failed),
+            Action::NothingHeard(id) => self.job_failed(id, Outcome::NothingHeard),
+        }
+    }
+
+    /// Ends a job that produced nothing to insert; `fallback` is how the overlay shows it when
+    /// the job left no reason.
+    fn job_failed(&mut self, id: RecordingId, fallback: Outcome) {
+        self.drop_chunks(id);
+        self.audio.remove(&id);
+        self.targets.remove(&id);
+        let (outcome, why) = self
+            .failures
+            .remove(&id)
+            .unwrap_or_else(|| (fallback, "Nothing heard.".to_owned()));
+        self.outcome = Some(outcome);
+        self.fail(&why);
+    }
+
+    /// Starts or closes the overlay to match the config.
+    fn set_overlay(&mut self, enabled: bool) {
+        if !enabled {
+            self.overlay = None;
+        } else if self.overlay.is_none() {
+            self.overlay = start_overlay(&self.level);
+        }
+    }
+
+    fn refresh_overlay(&mut self) {
+        let phase = overlay_phase(
+            self.recorder.is_recording(),
+            self.mic_live,
+            self.pending(),
+            &mut self.outcome,
+        );
+        if let Some(overlay) = &self.overlay {
+            overlay.set_phase(phase);
         }
     }
 
@@ -635,6 +674,11 @@ impl Daemon {
             // Includes waiting for the shortcut's keys to be released and the clipboard restore.
             tracing::info!(ms = stopped.elapsed().as_millis(), "stop to paste");
         }
+        self.outcome = Some(match result {
+            Ok(Ok(Inserted::Pasted)) => Outcome::Inserted,
+            Ok(Ok(Inserted::FocusChanged)) => Outcome::NotPasted,
+            Ok(Err(_)) | Err(_) => Outcome::Failed,
+        });
         match result {
             Ok(Ok(Inserted::Pasted)) if low => {
                 self.alert(TrayState::Warning, "Inserted, but it may be misheard.");
@@ -705,11 +749,43 @@ fn mode(cfg: &Config) -> Mode {
     }
 }
 
-fn capture_config(cfg: &Config) -> CaptureConfig {
+fn capture_config(cfg: &Config, level: &Level) -> CaptureConfig {
     CaptureConfig {
         device: cfg.recording.device.clone(),
         max_duration: Duration::from_secs(cfg.recording.max_seconds),
+        level: level.clone(),
         ..CaptureConfig::default()
+    }
+}
+
+/// The overlay fed with the capture level; a failure is logged and dictation goes on without it.
+fn start_overlay(level: &Level) -> Option<Overlay> {
+    let level = level.clone();
+    match Overlay::start(move || level.get()) {
+        Ok(overlay) => Some(overlay),
+        Err(e) => {
+            tracing::warn!(code = e.code(), "overlay did not start");
+            None
+        }
+    }
+}
+
+/// What the overlay shows. A live recording always wins; the transcribing look stays while any
+/// job is pending; the last job's outcome plays once, when everything is done.
+fn overlay_phase(
+    recording: bool,
+    mic_live: bool,
+    pending: usize,
+    outcome: &mut Option<Outcome>,
+) -> Phase {
+    if recording && !mic_live {
+        Phase::Opening
+    } else if recording {
+        Phase::Listening
+    } else if pending > 0 {
+        Phase::Transcribing
+    } else {
+        outcome.take().map_or(Phase::Idle, Phase::Finished)
     }
 }
 
@@ -778,6 +854,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         "ready: {how} {RECORD_SHORTCUT} to dictate, {CANCEL_SHORTCUT} cancels, Ctrl+C quits"
     ));
     tracing::info!(mode = how, "daemon ready");
+    let level = Level::default();
     let mut daemon = Daemon {
         providers: setup.providers,
         engine: setup.engine,
@@ -786,7 +863,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         language: setup.language,
         prompt_tokens: setup.prompt_tokens,
         mode,
-        capture_cfg: capture_config(&cfg),
+        capture_cfg: capture_config(&cfg, &level),
         history: open_history(&cfg, &paths.state_dir),
         config_file: paths.config_file,
         state_dir: paths.state_dir,
@@ -804,6 +881,13 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         stopped: HashMap::new(),
         mic_live: false,
         flag: None,
+        overlay: if cfg.ui.overlay {
+            start_overlay(&level)
+        } else {
+            None
+        },
+        level,
+        outcome: None,
         quit: false,
     };
     while !daemon.quit {
@@ -818,10 +902,44 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
             }
         }
         daemon.refresh_tray();
+        daemon.refresh_overlay();
     }
     tracing::info!("daemon stopping");
     if let Some(engine) = daemon.engine {
         let _ = engine.shutdown().await;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recording_wins_over_outcome() {
+        let mut outcome = Some(Outcome::Inserted);
+        assert_eq!(overlay_phase(true, true, 0, &mut outcome), Phase::Listening);
+        assert_eq!(outcome, Some(Outcome::Inserted));
+        assert_eq!(overlay_phase(true, false, 1, &mut outcome), Phase::Opening);
+    }
+
+    #[test]
+    fn outcome_plays_once_when_all_done() {
+        let mut outcome = Some(Outcome::Failed);
+        assert_eq!(
+            overlay_phase(false, false, 0, &mut outcome),
+            Phase::Finished(Outcome::Failed)
+        );
+        assert_eq!(overlay_phase(false, false, 0, &mut outcome), Phase::Idle);
+    }
+
+    #[test]
+    fn pending_shows_transcribing() {
+        let mut outcome = Some(Outcome::Inserted);
+        assert_eq!(
+            overlay_phase(false, false, 1, &mut outcome),
+            Phase::Transcribing
+        );
+        assert_eq!(outcome, Some(Outcome::Inserted));
+    }
 }

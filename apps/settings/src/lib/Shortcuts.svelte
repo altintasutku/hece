@@ -48,6 +48,11 @@
     onchange={(e) => change("overlay", { "ui.overlay": e.currentTarget.checked })} />
 </Row>
 
+<Row label="Sesli uyarı" help="Kayıt başlarken, biterken ve iptal edilince kısa, yumuşak bir ses" note={notes.sounds}>
+  <input type="checkbox" checked={snap.values["feedback.sounds"] !== false}
+    onchange={(e) => change("sounds", { "feedback.sounds": e.currentTarget.checked })} />
+</Row>
+
 <Row label="En uzun kayıt" help="Bu süreden sonra kayıt kendiliğinden biter (en çok 11 dk)" note={notes.max}>
   <select value={minutes}
     onchange={(e) => change("max", { "recording.max_seconds": Number(e.currentTarget.value) * 60 })}>

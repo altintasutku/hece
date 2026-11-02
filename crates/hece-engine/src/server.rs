@@ -184,6 +184,10 @@ impl Backend for CudaBackend {
             language: req.language.clone(),
             initial_prompt,
             vad: req.vad,
+            decode: crate::decode::DecodeOptions {
+                beam_size: req.beam_size.map_or(5, |b| b.clamp(1, 10) as usize),
+                ..crate::decode::DecodeOptions::default()
+            },
             ..crate::TranscribeOptions::default()
         };
         engine.transcribe(audio, &opts)

@@ -281,6 +281,7 @@ fn cfg(socket: &Path, base: Duration) -> EngineConfig {
         connect_timeout: Duration::from_secs(5),
         base_timeout: base,
         reconnect_after: Duration::from_secs(25),
+        beam_size: None,
     }
 }
 

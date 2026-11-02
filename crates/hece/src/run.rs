@@ -161,6 +161,8 @@ struct Daemon {
     /// Chunks transcribed while recording, in order.
     chunks: HashMap<RecordingId, Vec<ChunkTask>>,
     failures: HashMap<RecordingId, String>,
+    /// When each recording was stopped, for the stop-to-paste latency log.
+    stopped: HashMap<RecordingId, Instant>,
     /// Whether the current recording's microphone delivers audio yet (Handy #1879: show
     /// "recording" only once speech is actually captured).
     mic_live: bool,
@@ -387,6 +389,9 @@ impl Daemon {
             }
             Msg::Captured(id, Ok(recording)) => {
                 let samples = recording.samples.len();
+                if let Some(stopped) = self.stopped.get(&id) {
+                    tracing::info!(ms = stopped.elapsed().as_millis(), "capture closed");
+                }
                 self.audio.insert(id, recording.samples);
                 Some(Input::Captured { id, samples })
             }
@@ -402,6 +407,9 @@ impl Daemon {
             Msg::Transcribed(id, result) => {
                 self.tasks.remove(&id);
                 let ok = self.transcribed(id, result);
+                if !ok {
+                    self.stopped.remove(&id);
+                }
                 Some(Input::Transcribed { id, ok })
             }
         }
@@ -454,6 +462,7 @@ impl Daemon {
             Action::StopCapture(id) => {
                 self.current = None;
                 self.targets.insert(id, hece_platform::focused_window());
+                self.stopped.insert(id, Instant::now());
                 if let Some(stop) = self.captures.remove(&id) {
                     let _ = stop.send(true);
                 }
@@ -469,6 +478,7 @@ impl Daemon {
             }
             Action::Transcribe(id) => self.transcribe(id),
             Action::Abort(id) => {
+                self.stopped.remove(&id);
                 if let Some(task) = self.tasks.remove(&id) {
                     task.abort();
                 }
@@ -540,6 +550,8 @@ impl Daemon {
         let llm = self.cleaner.clone();
         let tx = self.tx.clone();
         let task = tokio::spawn(async move {
+            let started = Instant::now();
+            let chunked = chunks.len();
             let transcribed = if chunks.is_empty() {
                 longform::transcribe(&providers, &audio, &params).await
             } else {
@@ -556,6 +568,7 @@ impl Daemon {
             };
             let result = match transcribed {
                 Ok(outcome) => {
+                    let stt = started.elapsed();
                     let transcript = outcome.transcript.with_quality_layers();
                     let cleanup = match &llm {
                         Some(llm) if !transcript.text.is_empty() => {
@@ -568,6 +581,13 @@ impl Daemon {
                         Some(c) => (None, c.skipped),
                         None => (None, None),
                     };
+                    tracing::info!(
+                        stt_ms = stt.as_millis(),
+                        cleanup_ms = started.elapsed().saturating_sub(stt).as_millis(),
+                        audio_ms = audio.len() / 16,
+                        chunked,
+                        "transcribed"
+                    );
                     Ok(Dictation {
                         transcript,
                         cleaned,
@@ -612,6 +632,10 @@ impl Daemon {
         let low = dictation.transcript.low_confidence;
         let result =
             tokio::task::spawn_blocking(move || hece_platform::insert(&text, target)).await;
+        if let Some(stopped) = self.stopped.remove(&id) {
+            // Includes waiting for the shortcut's keys to be released and the clipboard restore.
+            tracing::info!(ms = stopped.elapsed().as_millis(), "stop to paste");
+        }
         match result {
             Ok(Ok(Inserted::Pasted)) if low => {
                 self.alert(TrayState::Warning, "Inserted, but it may be misheard.");
@@ -768,6 +792,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         results: HashMap::new(),
         chunks: HashMap::new(),
         failures: HashMap::new(),
+        stopped: HashMap::new(),
         mic_live: false,
         flag: None,
         quit: false,

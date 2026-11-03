@@ -42,6 +42,9 @@ pub struct ApiState {
 /// Concurrent transcriptions the API accepts.
 pub const MAX_CONCURRENT: usize = 2;
 
+/// Open connections the API keeps; one more is closed right after it is accepted.
+const MAX_CONNECTIONS: usize = 32;
+
 /// An `OpenAI`-style error body with a stable code.
 fn error(status: StatusCode, code: &str, message: &str) -> Response {
     let body = json!({"error": {"message": message, "type": "hece_error", "code": code}});
@@ -354,6 +357,17 @@ pub fn router(state: Arc<ApiState>) -> Router {
 
 /// Reads the token from `path`, creating a random one (owner-only file) when missing.
 pub fn token(path: &Path) -> anyhow::Result<String> {
+    let token = read_or_create_token(path)?;
+    // The profile folder is already private; this also drops inherited entries (best effort,
+    // also fixes files written before the ACL was set).
+    #[cfg(windows)]
+    if let Err(e) = hece_platform::restrict_to_user(path) {
+        tracing::warn!(code = e.code(), "api token file ACL not restricted");
+    }
+    Ok(token)
+}
+
+fn read_or_create_token(path: &Path) -> anyhow::Result<String> {
     if let Ok(existing) = std::fs::read_to_string(path) {
         let existing = existing.trim().to_owned();
         if existing.len() >= 32 {
@@ -377,11 +391,22 @@ pub fn token(path: &Path) -> anyhow::Result<String> {
     Ok(token)
 }
 
-/// Serves the API on 127.0.0.1:`port` until the process ends.
-pub async fn serve(state: Arc<ApiState>, port: u16) -> anyhow::Result<SocketAddr> {
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
+/// Serves the API on 127.0.0.1:`port` until the process ends. Call inside the tokio runtime.
+pub fn serve(state: Arc<ApiState>, port: u16) -> anyhow::Result<SocketAddr> {
+    serve_capped(state, port, MAX_CONNECTIONS)
+}
+
+/// [`serve`] with at most `cap` open connections; more are closed as soon as they are accepted.
+fn serve_capped(state: Arc<ApiState>, port: u16, cap: usize) -> anyhow::Result<SocketAddr> {
+    let socket = tokio::net::TcpSocket::new_v4()?;
+    // Without this another account could bind the same port and take some of the clients.
+    #[cfg(windows)]
+    hece_platform::exclusive_address_use(&socket)?;
+    socket.bind(SocketAddr::from(([127, 0, 0, 1], port)))?;
+    let listener = socket.listen(1024)?;
     let addr = listener.local_addr()?;
     let app = router(state);
+    let connections = Arc::new(tokio::sync::Semaphore::new(cap));
     tokio::spawn(async move {
         loop {
             let stream = match listener.accept().await {
@@ -392,8 +417,14 @@ pub async fn serve(state: Arc<ApiState>, port: u16) -> anyhow::Result<SocketAddr
                     continue;
                 }
             };
+            let Ok(permit) = Arc::clone(&connections).try_acquire_owned() else {
+                tracing::debug!("local API connection limit reached");
+                drop(stream);
+                continue;
+            };
             let service = hyper_util::service::TowerToHyperService::new(app.clone());
             tokio::spawn(async move {
+                let _permit = permit;
                 // A client that never finishes its headers is dropped instead of holding a task.
                 let conn = hyper::server::conn::http1::Builder::new()
                     .timer(hyper_util::rt::TokioTimer::new())
@@ -443,7 +474,11 @@ mod tests {
         }
     }
 
-    async fn start() -> String {
+    fn start() -> String {
+        start_capped(MAX_CONNECTIONS)
+    }
+
+    fn start_capped(cap: usize) -> String {
         let caps = Capabilities {
             local: true,
             vocabulary: VocabularyStyle::Unsupported,
@@ -461,8 +496,31 @@ mod tests {
             token: "t".repeat(64),
             slots: tokio::sync::Semaphore::new(MAX_CONCURRENT),
         });
-        let addr = serve(state, 0).await.unwrap();
+        let addr = serve_capped(state, 0, cap).unwrap();
         format!("http://127.0.0.1:{}", addr.port())
+    }
+
+    #[tokio::test]
+    async fn connections_over_the_cap_are_closed() {
+        use tokio::io::AsyncReadExt as _;
+        let base = start_capped(1);
+        let addr = base.trim_start_matches("http://");
+        let held = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut extra = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut buf = [0u8; 1];
+        let read = tokio::time::timeout(Duration::from_secs(5), extra.read(&mut buf)).await;
+        assert!(matches!(read, Ok(Ok(0) | Err(_))), "{read:?}");
+        // Closing the held connection frees its slot.
+        drop(held);
+        let mut status = None;
+        for _ in 0..50 {
+            if let Ok(resp) = reqwest::get(format!("{base}/health")).await {
+                status = Some(resp.status());
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(status, Some(reqwest::StatusCode::OK));
     }
 
     /// One second of 48 kHz stereo silence.
@@ -498,7 +556,7 @@ mod tests {
 
     #[tokio::test]
     async fn openai_style_request_is_resampled_and_answered() {
-        let base = start().await;
+        let base = start();
         let resp = post(&base, Some(&"t".repeat(64)), wav_48k_stereo()).await;
         assert_eq!(resp.status(), 200);
         let body: serde_json::Value = serde_json::from_slice(&resp.bytes().await.unwrap()).unwrap();
@@ -509,7 +567,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_or_wrong_token_is_401() {
-        let base = start().await;
+        let base = start();
         // An empty file: the 401 goes out before the body is read, and on Windows a large
         // unread body can make the closing socket reset the connection before the client
         // sees the response.
@@ -519,7 +577,7 @@ mod tests {
 
     #[tokio::test]
     async fn oversize_upload_is_413_and_non_wav_is_415() {
-        let base = start().await;
+        let base = start();
         let token = "t".repeat(64);
         let big = vec![0u8; MAX_UPLOAD_BYTES + 128 * 1024];
         assert_eq!(post(&base, Some(&token), big).await.status(), 413);

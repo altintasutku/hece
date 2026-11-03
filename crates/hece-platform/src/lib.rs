@@ -13,8 +13,8 @@ mod windows;
 #[cfg(windows)]
 pub use windows::{
     ControlListener, ControlRequest, Desktop, Inserted, Overlay, Window, autostart_enabled,
-    control_request, copy, disable_autostart, enable_autostart, focused_window, insert, notify,
-    open, pipe_server_is_current_user,
+    control_request, copy, disable_autostart, enable_autostart, exclusive_address_use,
+    focused_window, insert, notify, open, pipe_server_is_current_user, restrict_to_user,
 };
 
 /// Which global shortcut fired.
@@ -71,6 +71,9 @@ pub enum PlatformError {
     /// The recording overlay window could not be created.
     #[error("the recording overlay could not be shown")]
     Overlay,
+    /// A file's permissions could not be restricted.
+    #[error("file permissions could not be restricted")]
+    Permissions,
 }
 
 impl PlatformError {
@@ -89,6 +92,7 @@ impl PlatformError {
             Self::ForeignPipe => "foreign_pipe",
             Self::Autostart => "autostart_failed",
             Self::Overlay => "overlay_failed",
+            Self::Permissions => "permissions_failed",
         }
     }
 }

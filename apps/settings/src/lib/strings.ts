@@ -39,10 +39,26 @@ export function savedNote(answer: string): { text: string; error: boolean } {
       return { text: "Kaydedildi · dikte bitince Hece'yi yeniden başlat", error: false };
     case "invalid_config":
       return { text: "Kaydedildi ama Hece bu ayarlarla başlayamıyor (invalid_config)", error: true };
+    case "cuda_runtime_missing":
+      return { text: "Kaydedildi · yerel motor için CUDA bileşenini indir (cuda_runtime_missing)", error: true };
+    case "no_nvidia_gpu":
+      return { text: "Kaydedildi · yerel motor NVIDIA ekran kartı ister (no_nvidia_gpu)", error: true };
     default:
       return { text: `Kaydedildi · Hece'ye ulaşılamadı (${answer})`, error: true };
   }
 }
+
+/** The CUDA runtime row in the local-model section. */
+export const cudaRuntime = {
+  label: "CUDA",
+  button: "İndir",
+  cancel: "Vazgeç",
+  missing: (mb: number) =>
+    `Yerel motorun ekran kartı bileşeni; bir kez NVIDIA'dan indirilir (~${mb} MB, NVIDIA CUDA lisansıyla)`,
+  downloading: (percent: number) => `İndiriliyor… %${percent}`,
+  failed: (code: string) => `İndirilemedi (${code}); tekrar denersen kaldığı yerden devam eder`,
+  noGpu: "NVIDIA ekran kartı bulunamadı; yerel motor çalışmaz. Bulut sağlayıcı seç",
+};
 
 export function daemonText(status: string): string {
   if (status === "idle") return "Çalışıyor, boşta";

@@ -12,7 +12,9 @@ mod api;
 mod bench;
 mod cli;
 mod config;
+pub mod cuda;
 mod dictate;
+pub mod download;
 mod history;
 #[cfg(windows)]
 mod logging;
@@ -31,6 +33,8 @@ use anyhow::Context as _;
 use clap::Parser;
 use hece_providers::{ApiKey, KeyringStore, SecretStore};
 
+#[cfg(windows)]
+use crate::cli::RuntimeCommand;
 use crate::cli::{Cli, Command, HistoryArgs, KeyCommand, ModelCommand};
 use crate::config::{Config, ConfigError};
 
@@ -67,6 +71,10 @@ pub fn background_main() -> ExitCode {
                     "Hece needs setup",
                     "Settings are open: set the model folder or a cloud provider, then press Başlat.",
                 );
+            } else if let Some(runtime) = e.downcast_ref::<cuda::RuntimeError>()
+                && open_settings()
+            {
+                hece_platform::notify("Hece needs setup", &format!("Settings are open: {runtime}"));
             } else {
                 hece_platform::notify("Hece could not start", &format!("{e:#}"));
             }
@@ -182,24 +190,67 @@ fn model(command: &ModelCommand) -> anyhow::Result<()> {
                     .with_context(|| format!("unknown model {id}; see `hece model list`"))?,
                 None => &models::CATALOG[0],
             };
-            let mut shown = 0;
             let path = runtime()?
                 .block_on(models::download(
                     &models::client(),
                     models::HUB,
                     m,
                     &dir,
-                    |p| {
-                        let percent = p.done * 100 / p.total.max(1);
-                        if percent >= shown + 5 {
-                            shown = percent;
-                            output::status(&format!("{} {percent}%", m.id));
-                        }
-                        std::ops::ControlFlow::Continue(())
-                    },
+                    percent_lines(m.id),
                 ))
                 .map_err(|e| anyhow::anyhow!("{e} ({})", e.code()))?;
             output::status(&format!("downloaded to {}", path.display()));
+        }
+    }
+    Ok(())
+}
+
+/// Download progress as `<label> N%` lines every 5%.
+fn percent_lines(
+    label: &str,
+) -> impl FnMut(download::Progress) -> std::ops::ControlFlow<()> + use<'_> {
+    let mut shown = 0;
+    move |p| {
+        let percent = p.done * 100 / p.total.max(1);
+        if percent >= shown + 5 {
+            shown = percent;
+            output::status(&format!("{label} {percent}%"));
+        }
+        std::ops::ControlFlow::Continue(())
+    }
+}
+
+#[cfg(windows)]
+fn cuda_runtime(command: RuntimeCommand) -> anyhow::Result<()> {
+    let mb = cuda::download_size() / 1_000_000;
+    match command {
+        RuntimeCommand::Status => {
+            let state = match cuda::locate_here()? {
+                Some(cuda::Location::Downloaded(dir)) => format!("downloaded ({})", dir.display()),
+                Some(cuda::Location::System(dir)) => format!("provided by {}", dir.display()),
+                None => format!("missing (~{mb} MB; run `hece runtime download`)"),
+            };
+            output::line(&format!("CUDA {} runtime: {state}", cuda::VERSION));
+            let gpu = if cuda::nvidia_gpu() { "yes" } else { "no" };
+            output::line(&format!("NVIDIA GPU: {gpu}"));
+        }
+        RuntimeCommand::Download => {
+            if !cuda::nvidia_gpu() {
+                output::status("no NVIDIA GPU found; the local engine will not run here");
+            }
+            output::status(&format!(
+                "downloading ~{mb} MB from NVIDIA; NVIDIA's CUDA EULA applies: {}",
+                cuda::EULA
+            ));
+            let path = runtime()?
+                .block_on(cuda::download(
+                    &download::client(),
+                    cuda::REDIST,
+                    &paths::state_dir()?,
+                    percent_lines("cuda"),
+                ))
+                .map_err(|e| anyhow::anyhow!("{e} ({})", e.code()))?;
+            output::status(&format!("unpacked to {}", path.display()));
         }
     }
     Ok(())
@@ -239,6 +290,8 @@ fn run(cli: Cli) -> anyhow::Result<bool> {
         }
         Command::Key(command) => key(&command).map(|()| false),
         Command::Model(command) => model(&command).map(|()| false),
+        #[cfg(windows)]
+        Command::Runtime(command) => cuda_runtime(command).map(|()| false),
         #[cfg(windows)]
         Command::Autostart { action } => {
             use crate::cli::Toggle;

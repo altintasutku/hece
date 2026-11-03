@@ -1,8 +1,9 @@
 <script lang="ts">
   import KeyRow from "./KeyRow.svelte";
   import Row from "./Row.svelte";
-  import { cancelDownload, downloadModel, type Snapshot, type Value } from "./api";
+  import { cancelDownload, downloadCuda, downloadModel, type Snapshot, type Value } from "./api";
   import type { Note } from "./save";
+  import { cudaRuntime, savedNote } from "./strings";
 
   interface Props {
     snap: Snapshot;
@@ -69,9 +70,38 @@
       refresh();
     } catch (e) {
       const code = String(e);
-      if (code !== "model_download_cancelled") failure = code;
+      if (code !== "download_cancelled") failure = code;
     } finally {
       percent = null;
+    }
+  }
+
+  // The CUDA runtime row: only when the runtime is missing.
+  let cudaPercent: number | null = $state(null);
+  let cudaFailure: string | null = $state(null);
+  const busy = $derived(percent !== null || cudaPercent !== null);
+  const cudaHelp = $derived(
+    !snap.cuda.gpu
+      ? cudaRuntime.noGpu
+      : cudaPercent !== null
+        ? cudaRuntime.downloading(cudaPercent)
+        : cudaFailure
+          ? cudaRuntime.failed(cudaFailure)
+          : cudaRuntime.missing(snap.cuda.size_mb),
+  );
+
+  async function downloadRuntime() {
+    cudaFailure = null;
+    cudaPercent = 0;
+    try {
+      notes.cuda = savedNote(await downloadCuda((p) => (cudaPercent = p)));
+      setTimeout(() => (notes.cuda = null), 3000);
+      refresh();
+    } catch (e) {
+      const code = String(e);
+      if (code !== "download_cancelled") cudaFailure = code;
+    } finally {
+      cudaPercent = null;
     }
   }
 </script>
@@ -98,9 +128,18 @@
     {#if percent !== null}
       <button onclick={cancelDownload}>Vazgeç</button>
     {:else if selected && !selected.installed}
-      <button onclick={() => download(selected.id)}>İndir</button>
+      <button disabled={busy} onclick={() => download(selected.id)}>İndir</button>
     {/if}
   </Row>
+  {#if snap.cuda.state === "missing"}
+    <Row label={cudaRuntime.label} help={cudaHelp} note={notes.cuda}>
+      {#if cudaPercent !== null}
+        <button onclick={cancelDownload}>{cudaRuntime.cancel}</button>
+      {:else if snap.cuda.gpu}
+        <button disabled={busy} onclick={downloadRuntime}>{cudaRuntime.button}</button>
+      {/if}
+    </Row>
+  {/if}
 {/if}
 
 {#if v("provider.kind") === "openai"}

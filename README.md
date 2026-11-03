@@ -22,7 +22,9 @@ License: MIT
 2. Local transcription needs an NVIDIA GPU and a Whisper model. Download one in **Hece Ayarlar**
    or with `hece model download` (`hece model list` shows them): multilingual Whisper large-v3
    turbo by default, or a fine-tuned single-language model such as Turkish. Downloads are pinned
-   and checksummed. Without the CUDA runtime, use a cloud provider instead.
+   and checksummed. The CUDA runtime (cuBLAS, cudart; ~426 MB) is downloaded from NVIDIA the same
+   way, in **Hece Ayarlar** or with `hece runtime download` (`hece runtime status` checks it); an
+   installed CUDA Toolkit 13 on `PATH` is used as is. Without an NVIDIA GPU, use a cloud provider.
 3. Open **Hece Ayarlar** and pick the downloaded model, or a cloud provider and its key (stored in the
    Windows Credential Manager). It writes `config.toml` (`hece config` prints the path) and keeps
    your comments. If Hece starts before this is set, it opens the settings window itself.

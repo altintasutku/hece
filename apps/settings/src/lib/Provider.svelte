@@ -192,9 +192,7 @@
       {#each snap.models as m (m.id)}
         <option value={m.id}>{m.name}{m.installed ? "" : ` · ${(m.size_mb / 1000).toFixed(1)} GB`}</option>
       {/each}
-      {#if chosen === "custom"}
-        <option value="custom">{t.provider.customFolder}</option>
-      {/if}
+      <option value="custom">{t.provider.customFolder}</option>
     </select>
     {#if percent !== null}
       <button onclick={cancelDownload}>{t.provider.cancel}</button>
@@ -202,6 +200,13 @@
       <button class="primary" disabled={busy} onclick={() => download(selected.id)}>{t.provider.download}</button>
     {/if}
   </Row>
+  {#if chosen === "custom"}
+    <Row label={t.provider.modelDir} help={t.provider.modelDirHelp} note={notes.dir}>
+      <input class="path" value={fromConfig === "custom" ? text("provider.model_dir") : ""} spellcheck="false"
+        placeholder="C:\models\my-model"
+        onchange={(e) => change("dir", { "provider.model_dir": e.currentTarget.value.trim() || null })} />
+    </Row>
+  {/if}
   {#if snap.cuda.state === "missing"}
     <Row label={t.cuda.label} help={cudaHelp} note={notes.cuda}>
       {#if cudaPercent !== null}

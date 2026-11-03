@@ -9,7 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.1.0] - 2026-11-03
 
-The first public release (v0.1.0) is being prepared. Windows only.
+The first public release. Windows only.
 
 ### Added
 

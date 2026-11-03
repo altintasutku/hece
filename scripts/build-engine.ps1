@@ -16,5 +16,5 @@ $env:PATH = "$($cuda.FullName)\bin;$env:PATH"
 # 12.0 is Blackwell (RTX 50xx).
 $env:CUDA_ARCH_LIST = '8.9;12.0'
 $env:RUSTFLAGS = '-C target-feature=+crt-static'
-mise x -- cargo build --release -p hece -p hece-engine --features hece-engine/cuda,hece-engine/ort-dynamic
+mise x -- cargo build --release --locked -p hece -p hece-engine --features hece-engine/cuda,hece-engine/ort-dynamic
 exit $LASTEXITCODE

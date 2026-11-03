@@ -16,6 +16,10 @@ thiserror.workspace = true
 tracing.workspace = true
 tiny-skia.workspace = true
 
+[dev-dependencies]
+# The overlay_render example reads a voice recording.
+hound.workspace = true
+
 [target.'cfg(windows)'.dependencies]
 global-hotkey = "0.9.0"
 tray-icon = "0.26.1"

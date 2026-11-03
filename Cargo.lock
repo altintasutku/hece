@@ -2403,6 +2403,7 @@ dependencies = [
  "getrandom 0.4.3",
  "global-hotkey",
  "hece-core",
+ "hound",
  "interprocess",
  "tauri-winrt-notification",
  "thiserror 2.0.21",

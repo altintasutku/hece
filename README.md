@@ -28,8 +28,9 @@ Status: early. Windows only for now; Linux and macOS are planned.
 - **Your "not" stays a "not".** Optional LLM cleanup removes fillers and fixes punctuation. A guard
   rejects any cleanup that drops a negation, adds lines or changes the length sharply, and Hece
   pastes the raw transcript instead.
-- **Your vocabulary.** A plain text file of names and terms, one per line, steers transcription
-  toward your spelling (Whisper prompt locally, key terms on Deepgram).
+- **Your vocabulary.** A list of names and terms, edited in Settings → Vocabulary or as a plain
+  text file, steers transcription toward your spelling (Whisper prompt locally, key terms on
+  Deepgram).
 - **A confidence signal.** When the model was unsure, Hece still pastes the text but tells you it
   may be misheard. It never drops text on its own.
 - **Cloud if you want.** No NVIDIA GPU? Use Groq, OpenAI, any OpenAI-compatible server, or
@@ -50,7 +51,8 @@ Status: early. Windows only for now; Linux and macOS are planned.
    > compare it with `SHA256SUMS.txt` from the release, or verify that this repository's GitHub
    > Actions built it:
    > `gh attestation verify Hece_<version>_x64-setup.exe --repo altintasutku/hece`.
-   > Signing is in progress ([#49](https://github.com/altintasutku/hece/issues/49)).
+   > Signing is in progress ([#49](https://github.com/altintasutku/hece/issues/49),
+   > [docs/code-signing.md](docs/code-signing.md)).
    <!-- /UNSIGNED-BUILD NOTE -->
 
 2. For local transcription, download a model in **Hece Settings** or with `hece model download`
@@ -59,7 +61,8 @@ Status: early. Windows only for now; Linux and macOS are planned.
    provider instead ([docs/cloud-providers.md](docs/cloud-providers.md)).
 3. In **Hece Settings**, choose the downloaded model, or a cloud provider and its key. If Hece
    starts before this is set, it opens the settings window itself.
-4. Start **Hece** from the Start menu. Hold **Ctrl+Shift+Space**, speak, let go.
+4. Start **Hece** from the Start menu. Hold **Ctrl+Shift+Space**, speak, let go. Both shortcuts
+   can be changed in Settings → Shortcuts.
 
 Uninstall from Windows Settings → Apps. Tick "Delete the application data" to also remove the
 config, models, history, logs and stored API keys.
@@ -85,6 +88,8 @@ plus the tools in `mise.toml`).
 | Dictate | Hold **Ctrl+Shift+Space**, speak, let go. The text is pasted where your cursor is. |
 | Toggle mode | Settings → Shortcuts → Recording mode **Toggle**: press once to start, once to stop. |
 | Cancel | **Ctrl+Shift+Backspace** cancels the running recording or the dictation being transcribed. |
+| Change shortcuts | Settings → Shortcuts: **Change**, then press the new chord. Or `[recording] hotkey` / `cancel_hotkey`. |
+| Vocabulary | Settings → Vocabulary: add, edit, reorder (earlier wins) or import terms. |
 | Paste again | Tray → **Paste last dictation** (or **Paste last raw transcript**), or `hece repaste [--raw]`. |
 | History | `hece history` lists recent dictations; `hece history --clear` deletes them. |
 
@@ -115,8 +120,8 @@ comments. If you edit the file by hand, restart Hece.
 
 | Section | What it sets |
 | --- | --- |
-| `[recording]` | `mode` (hold or toggle), microphone `device`, `max_seconds` |
-| `[transcription]` | `language` (default: auto-detect), `vocabulary_file`, `allow_cloud_fallback` |
+| `[recording]` | `mode` (hold or toggle), `hotkey`, `cancel_hotkey`, microphone `device`, `max_seconds` |
+| `[transcription]` | `language` (default: auto-detect), `vocabulary_file` (default: `vocabulary.txt` next to `config.toml`), `allow_cloud_fallback` |
 | `[provider]`, `[fallback]` | `kind` (local, openai, deepgram), model, `base_url`, `key` (keyring, none or `env:VARIABLE`) |
 | `[cleanup]` | optional LLM cleanup: `anthropic` or `openai` kind (OpenAI, OpenRouter, Ollama, llama.cpp server) |
 | `[api]` | local OpenAI-compatible API on `127.0.0.1`, off by default, token-protected |
@@ -154,7 +159,6 @@ The commented template written on first run is `TEMPLATE` in
 ## Known limits
 
 - Windows only. Local transcription needs an NVIDIA GPU (see Requirements).
-- The shortcuts cannot be changed yet.
 - Opening the microphone takes 0.4–1.1 s on some devices (measured on a Realtek array); the tray
   turns red only when audio actually flows, so start speaking then.
 - Pasting into a window running as administrator is blocked by Windows (UIPI) without an error;

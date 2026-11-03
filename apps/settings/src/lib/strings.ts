@@ -5,7 +5,7 @@
 
 import type { Note } from "./save";
 
-export type SectionId = "provider" | "shortcuts" | "about";
+export type SectionId = "provider" | "shortcuts" | "vocabulary" | "about";
 
 export interface Section {
   id: SectionId;
@@ -28,6 +28,12 @@ const en = {
       nav: "Shortcuts",
       syllables: ["Short", "cuts"],
       lede: "How you start and stop a recording, and which microphone listens.",
+    },
+    {
+      id: "vocabulary",
+      nav: "Vocabulary",
+      syllables: ["Vo", "cab", "u", "lar", "y"],
+      lede: "Names and terms Hece should spell your way. Higher in the list wins when space runs out.",
     },
     {
       id: "about",
@@ -129,9 +135,31 @@ const en = {
 
   shortcuts: {
     record: "Record",
-    recordHelp: "A shortcut Windows does not use; cannot be changed yet",
+    recordHelp: "Starts a dictation in any app",
     cancel: "Cancel",
     cancelHelp: "Cancels the running recording or the latest dictation",
+    change: "Change",
+    reset: "Reset",
+    press: "Press the new shortcut",
+    pressHelp: "Esc keeps the current one",
+    changeLabel: (action: string) => `Change the ${action.toLowerCase()} shortcut`,
+    unsupportedKey: "Use a letter, digit, F-key, Space or a navigation key (hotkey_invalid)",
+    inUse: (combo: string) => `${combo} is used by another app; kept the previous one (hotkey_in_use)`,
+    hotkeyError(message: string): string {
+      const code = /\((hotkey_\w+)\)$/.exec(message)?.[1];
+      switch (code) {
+        case "hotkey_no_modifier":
+          return "Add Ctrl, Alt or Win; only F13–F24 work alone (hotkey_no_modifier)";
+        case "hotkey_reserved":
+          return "Windows keeps this one, or Hece pastes with it (hotkey_reserved)";
+        case "hotkey_duplicate":
+          return "Record and cancel need different shortcuts (hotkey_duplicate)";
+        case "hotkey_invalid":
+          return "Not a usable shortcut (hotkey_invalid)";
+        default:
+          return message;
+      }
+    },
     mode: "Recording mode",
     modeHelp: "Hold: ends when you let go. Toggle: ends on the second press.",
     hold: "Hold",
@@ -146,6 +174,35 @@ const en = {
     maxLength: "Longest recording",
     maxLengthHelp: "Recording stops by itself after this long (at most 11 min)",
     minutes: (m: number) => (m === 1 ? "1 minute" : `${m} minutes`),
+  },
+
+  vocabulary: {
+    add: "Add a term",
+    addHelp: "A name, product or word Hece keeps getting wrong",
+    placeholder: "e.g. Kubernetes",
+    addButton: "Add",
+    terms: "Terms",
+    count: (terms: number, fit: number) =>
+      terms === 0 ? "None yet" : fit >= terms ? `${terms} in use` : `${terms} terms; the first ${fit} are used (length limit)`,
+    empty: "The list is empty. Add the names and jargon you say most.",
+    termLabel: (n: number) => `Term ${n}`,
+    moveUp: "Move up",
+    moveDown: "Move down",
+    remove: "Remove",
+    duplicate: "Already in the list; skipped",
+    invalid: "Skipped: up to 40 characters, no commas, not starting with # or !",
+    overBudget: "Past the length limit; not used",
+    file: "File",
+    fileHelp: (path: string) => path,
+    other: "Another file",
+    pathPlaceholder: "C:\\path\\to\\terms.txt",
+    use: "Use",
+    import: "Import",
+    cancel: "Cancel",
+    backToDefault: "Use default",
+    imported: (n: number) => (n === 1 ? "Imported 1 term" : `Imported ${n} terms`),
+    failed: (code: string) =>
+      code === "vocabulary_unreadable" ? "That file cannot be read (vocabulary_unreadable)" : `Could not save (${code})`,
   },
 };
 
@@ -165,6 +222,12 @@ const tr: Strings = {
       nav: "Kısayollar",
       syllables: ["Kı", "sa", "yol", "lar"],
       lede: "Kaydı nasıl başlatıp bitirdiğin ve hangi mikrofonun dinlendiği.",
+    },
+    {
+      id: "vocabulary",
+      nav: "Sözlük",
+      syllables: ["Söz", "lük"],
+      lede: "Hece'nin senin yazdığın gibi yazmasını istediğin adlar ve terimler. Yer yetmezse üstteki kazanır.",
     },
     {
       id: "about",
@@ -264,9 +327,31 @@ const tr: Strings = {
 
   shortcuts: {
     record: "Kaydet",
-    recordHelp: "Windows'un kullanmadığı bir kısayol; şimdilik değiştirilemez",
+    recordHelp: "Her uygulamada dikteyi başlatır",
     cancel: "Vazgeç",
     cancelHelp: "Süren kaydı ya da son dikteyi iptal eder",
+    change: "Değiştir",
+    reset: "Sıfırla",
+    press: "Yeni kısayola bas",
+    pressHelp: "Esc ile mevcut kısayol kalır",
+    changeLabel: (action) => `${action} kısayolunu değiştir`,
+    unsupportedKey: "Harf, rakam, F tuşu, Space ya da bir yön tuşu kullan (hotkey_invalid)",
+    inUse: (combo) => `${combo} başka bir uygulamada kullanılıyor; öncekisi kaldı (hotkey_in_use)`,
+    hotkeyError(message) {
+      const code = /\((hotkey_\w+)\)$/.exec(message)?.[1];
+      switch (code) {
+        case "hotkey_no_modifier":
+          return "Ctrl, Alt ya da Win ekle; tek başına yalnız F13–F24 olur (hotkey_no_modifier)";
+        case "hotkey_reserved":
+          return "Bunu Windows kullanıyor ya da Hece onunla yapıştırıyor (hotkey_reserved)";
+        case "hotkey_duplicate":
+          return "Kaydet ve vazgeç için farklı kısayollar gerekir (hotkey_duplicate)";
+        case "hotkey_invalid":
+          return "Kullanılabilir bir kısayol değil (hotkey_invalid)";
+        default:
+          return message;
+      }
+    },
     mode: "Kayıt biçimi",
     modeHelp: "Basılı tut: bırakınca biter. Bas-bas: ikinci basışta biter.",
     hold: "Basılı tut",
@@ -281,6 +366,35 @@ const tr: Strings = {
     maxLength: "En uzun kayıt",
     maxLengthHelp: "Bu süreden sonra kayıt kendiliğinden biter (en çok 11 dk)",
     minutes: (m) => `${m} dakika`,
+  },
+
+  vocabulary: {
+    add: "Terim ekle",
+    addHelp: "Hece'nin hep yanlış yazdığı bir ad, ürün ya da sözcük",
+    placeholder: "örn. Kubernetes",
+    addButton: "Ekle",
+    terms: "Terimler",
+    count: (terms, fit) =>
+      terms === 0 ? "Henüz yok" : fit >= terms ? `${terms} terim kullanımda` : `${terms} terim; uzunluk sınırı yüzünden ilk ${fit} tanesi kullanılıyor`,
+    empty: "Liste boş. En çok söylediğin adları ve terimleri ekle.",
+    termLabel: (n) => `Terim ${n}`,
+    moveUp: "Yukarı taşı",
+    moveDown: "Aşağı taşı",
+    remove: "Kaldır",
+    duplicate: "Listede zaten var; atlandı",
+    invalid: "Atlandı: en çok 40 karakter, virgülsüz, # ya da ! ile başlamayan",
+    overBudget: "Uzunluk sınırının dışında; kullanılmıyor",
+    file: "Dosya",
+    fileHelp: (path) => path,
+    other: "Başka dosya",
+    pathPlaceholder: "C:\\yol\\terimler.txt",
+    use: "Kullan",
+    import: "İçe aktar",
+    cancel: "Vazgeç",
+    backToDefault: "Varsayılana dön",
+    imported: (n) => `${n} terim içe aktarıldı`,
+    failed: (code) =>
+      code === "vocabulary_unreadable" ? "Bu dosya okunamıyor (vocabulary_unreadable)" : `Kaydedilemedi (${code})`,
   },
 };
 

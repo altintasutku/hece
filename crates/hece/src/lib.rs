@@ -27,6 +27,7 @@ mod providers;
 mod run;
 pub mod settings;
 mod update;
+pub mod vocabulary;
 
 use std::process::ExitCode;
 

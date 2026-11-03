@@ -2,6 +2,7 @@
   import About from "./lib/About.svelte";
   import Provider from "./lib/Provider.svelte";
   import Shortcuts from "./lib/Shortcuts.svelte";
+  import Vocabulary from "./lib/Vocabulary.svelte";
   import { snapshot, startDaemon, type Snapshot, type Value } from "./lib/api";
   import { save } from "./lib/save";
   import { t, type Section } from "./lib/strings";
@@ -42,6 +43,8 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
+    // A shortcut capture field took this key.
+    if (e.defaultPrevented) return;
     if (e.key === "Escape" || (e.ctrlKey && e.key.toLowerCase() === "w")) window.close();
   }
 </script>
@@ -86,6 +89,8 @@
           <Provider {snap} save={saveTo} {refresh} />
         {:else if current.id === "shortcuts"}
           <Shortcuts {snap} save={saveTo} />
+        {:else if current.id === "vocabulary"}
+          <Vocabulary />
         {:else}
           <About {snap} save={saveTo} />
         {/if}
@@ -118,7 +123,7 @@
   }
 
   @media (max-width: 760px) {
-    .layout { grid-template-columns: 1fr; }
+    .layout { grid-template-columns: 1fr; align-content: start; }
     aside { display: none; }
     .nav-select { display: block; margin: 16px 32px 0; justify-self: start; }
   }

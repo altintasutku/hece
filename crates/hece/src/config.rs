@@ -428,6 +428,40 @@ pub enum ConfigError {
     Invalid { path: PathBuf, message: String },
 }
 
+/// Drops values a serde message quotes (`invalid type: string "sk-…"`, ``unknown variant `…` ``):
+/// a key pasted into the wrong field must not reach the log or a toast. Backticked names that
+/// look like config field names stay, so "unknown field `max_secs`" still says what is wrong.
+fn redact_values(message: &str) -> String {
+    let looks_like_field = |s: &str| {
+        !s.is_empty()
+            && s.len() <= 24
+            && s.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    };
+    let mut out = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some(start) = rest.find(['"', '`']) {
+        let quote = &rest[start..=start];
+        out.push_str(&rest[..=start]);
+        let after = &rest[start + 1..];
+        let Some(len) = after.find(quote) else {
+            out.push('…');
+            out.push_str(quote);
+            return out;
+        };
+        let inner = &after[..len];
+        out.push_str(if quote == "`" && looks_like_field(inner) {
+            inner
+        } else {
+            "…"
+        });
+        out.push_str(quote);
+        rest = &after[len + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
 impl Config {
     /// Parses and validates `text`.
     pub fn parse(text: &str) -> Result<Self, String> {
@@ -437,9 +471,9 @@ impl Config {
             Some(span) => format!(
                 "line {}: {}",
                 text[..span.start].matches('\n').count() + 1,
-                e.message()
+                redact_values(e.message())
             ),
-            None => e.message().to_owned(),
+            None => redact_values(e.message()),
         })?;
         cfg.validate()?;
         Ok(cfg)
@@ -527,6 +561,9 @@ mod tests {
         for text in [
             "[provider]\nkey = sk-pasted\n",
             "[provider]\napi_key = \"sk-pasted\"\n",
+            "[provider]\nkind = \"sk-pasted\"\n",
+            "[recording]\nmax_seconds = \"sk-pasted\"\n",
+            "[provider]\nsk-pasted = 1\n",
         ] {
             let err = Config::parse(text).unwrap_err();
             assert!(

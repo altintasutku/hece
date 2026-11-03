@@ -209,7 +209,13 @@ impl ProcessSpawner {
 impl Spawner for ProcessSpawner {
     fn spawn(&self, cfg: &EngineConfig) -> Result<Child, EngineClientError> {
         let program = Self::resolve(cfg)?;
-        let mut command = Command::new(program);
+        let program = std::path::absolute(&program).unwrap_or(program);
+        let mut command = Command::new(&program);
+        // The worker loads DLLs (CUDA, cuBLAS) by name, and Windows searches the current
+        // directory for them; start it in its own folder instead of wherever the CLI ran.
+        if let Some(dir) = program.parent().filter(|d| !d.as_os_str().is_empty()) {
+            command.current_dir(dir);
+        }
         command
             .arg("serve")
             .arg("--socket")

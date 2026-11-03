@@ -125,6 +125,9 @@ impl EngineClientError {
 pub struct EngineConfig {
     /// Explicit path of the `hece-engine` binary; otherwise next to the current exe.
     pub engine_path: Option<PathBuf>,
+    /// Folder put first on the worker's `PATH`, so Windows finds DLLs there (the downloaded
+    /// CUDA runtime).
+    pub dll_dir: Option<PathBuf>,
     /// Socket path of the worker; on Windows the worker listens on
     /// [`hece_core::ipc::pipe_name`] of this path.
     pub socket: PathBuf,
@@ -163,6 +166,7 @@ impl EngineConfig {
             .ok_or(EngineClientError::NoRuntimeDir)?;
         Ok(Self {
             engine_path: None,
+            dll_dir: None,
             socket: PathBuf::from(runtime).join("hece").join("engine.sock"),
             model_dir,
             compute: DEFAULT_COMPUTE.to_owned(),
@@ -179,6 +183,23 @@ impl EngineConfig {
 pub trait Spawner: Send + Sync {
     /// Spawns a worker for `cfg`; it must listen on `cfg.socket`.
     fn spawn(&self, cfg: &EngineConfig) -> Result<Child, EngineClientError>;
+}
+
+/// `PATH` with `dir` in front of `current`, which is kept byte for byte. `None` when `dir` holds
+/// the separator (it would split into two entries).
+#[must_use]
+pub fn prepend_path(dir: &Path, current: Option<&std::ffi::OsStr>) -> Option<std::ffi::OsString> {
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let dir = dir.as_os_str();
+    if dir.is_empty() || dir.to_string_lossy().contains(sep) {
+        return None;
+    }
+    let mut path = dir.to_os_string();
+    if let Some(rest) = current.filter(|c| !c.is_empty()) {
+        path.push(sep);
+        path.push(rest);
+    }
+    Some(path)
 }
 
 /// Spawns the real `hece-engine serve` process.
@@ -225,6 +246,13 @@ impl Spawner for ProcessSpawner {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::inherit());
+        if let Some(dir) = &cfg.dll_dir {
+            if let Some(path) = prepend_path(dir, std::env::var_os("PATH").as_deref()) {
+                command.env("PATH", path);
+            } else {
+                tracing::warn!("dll folder cannot go on PATH; starting without it");
+            }
+        }
         // Own process group: a signal aimed at the daemon's group does not reach the worker.
         #[cfg(unix)]
         command.process_group(0);

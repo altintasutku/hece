@@ -31,6 +31,8 @@ pub(crate) enum Toast<'a> {
     HotkeyInUse(&'a str, &'a str),
     NeedsSetupTitle,
     NeedsSetup,
+    /// The local engine cannot run: the CUDA runtime or the NVIDIA GPU is missing (the code).
+    NeedsCudaRuntime(&'a str),
     NotStartedTitle,
     /// A newer release exists (the version).
     UpdateAvailable(&'a str),
@@ -89,6 +91,13 @@ impl Toast<'_> {
             Self::NeedsSetup => f.write_str(
                 "Hece Settings is open: pick a model or a cloud provider, then press Start.",
             ),
+            Self::NeedsCudaRuntime("no_nvidia_gpu") => f.write_str(
+                "Hece Settings is open: no NVIDIA graphics card, so pick a cloud provider (no_nvidia_gpu).",
+            ),
+            Self::NeedsCudaRuntime(code) => write!(
+                f,
+                "Hece Settings is open: download the CUDA runtime for the local engine ({code})."
+            ),
             Self::NotStartedTitle => f.write_str("Hece could not start"),
             Self::UpdateAvailable(version) => write!(f, "Hece {version} is available"),
             Self::ReleasePageFailed => f.write_str("Could not open the release page."),
@@ -135,6 +144,13 @@ impl Toast<'_> {
             Self::NeedsSetup => f.write_str(
                 "Hece Settings açık: bir model ya da bulut sağlayıcı seç, sonra Başlat'a bas.",
             ),
+            Self::NeedsCudaRuntime("no_nvidia_gpu") => f.write_str(
+                "Hece Settings açık: NVIDIA ekran kartı yok, bir bulut sağlayıcı seç (no_nvidia_gpu).",
+            ),
+            Self::NeedsCudaRuntime(code) => write!(
+                f,
+                "Hece Settings açık: yerel motor için CUDA bileşenini indir ({code})."
+            ),
             Self::NotStartedTitle => f.write_str("Hece başlatılamadı"),
             Self::UpdateAvailable(version) => write!(f, "Hece {version} indirilebilir"),
             Self::ReleasePageFailed => f.write_str("Sürüm sayfası açılamadı."),
@@ -169,6 +185,7 @@ mod tests {
             Toast::CleanupSkipped("code_x"),
             Toast::ModelNotLoaded(&e, "code_x"),
             Toast::HotkeyInUse("Ctrl+K", "code_x"),
+            Toast::NeedsCudaRuntime("code_x"),
         ] {
             for lang in [Lang::En, Lang::Tr] {
                 let text = In(&toast, lang).to_string();

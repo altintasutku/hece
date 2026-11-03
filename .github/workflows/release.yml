@@ -19,7 +19,7 @@ jobs:
   windows:
     runs-on: windows-latest
     # CTranslate2's CUDA kernels take a while to compile on a hosted runner.
-    timeout-minutes: 300
+    timeout-minutes: 360
     permissions:
       contents: write
       id-token: write
@@ -40,7 +40,8 @@ jobs:
           method: local
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          key: release-crt-static
+          # ct2rs does not rebuild when CUDA_ARCH_LIST changes: keep the list in the key.
+          key: release-crt-static-sm75-80-89-120
       - name: Build installer
         shell: pwsh
         run: ./scripts/build-release.ps1

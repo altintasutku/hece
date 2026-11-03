@@ -57,6 +57,7 @@ pub fn build(
             } else {
                 let mut cfg = EngineConfig::default_for(model)?;
                 cfg.engine_path.clone_from(&p.engine);
+                cfg.dll_dir = crate::cuda::engine_dll_dir()?;
                 let client = Arc::new(EngineClient::new(cfg, Arc::new(ProcessSpawner)));
                 *engine = Some(Arc::clone(&client));
                 client

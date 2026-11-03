@@ -20,6 +20,11 @@ pub fn config_file() -> anyhow::Result<PathBuf> {
     }
 }
 
+/// The per-user state folder (`%LOCALAPPDATA%\hece`): models, runtime, history.
+pub fn state_dir() -> anyhow::Result<PathBuf> {
+    crate::paths::state_dir()
+}
+
 /// The config file's current text, parsed for editing.
 pub fn read(path: &Path) -> anyhow::Result<DocumentMut> {
     Ok(std::fs::read_to_string(path)?.parse()?)

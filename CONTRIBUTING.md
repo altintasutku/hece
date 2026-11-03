@@ -56,7 +56,7 @@ bunx tauri build --no-bundle  # release exe
 
 Engine with CUDA on Windows: `powershell -File scripts/build-engine.ps1` (release `hece` +
 `hece-engine`). On Linux:
-`CUDA_ARCH_LIST="8.9;12.0" CMAKE_BUILD_PARALLEL_LEVEL=4 CARGO_BUILD_JOBS=4 cargo build -p hece-engine --features cuda-dynamic`.
+`CUDA_ARCH_LIST="7.5;8.0;8.9;12.0" CMAKE_BUILD_PARALLEL_LEVEL=4 CARGO_BUILD_JOBS=4 cargo build -p hece-engine --features cuda-dynamic`.
 The CTranslate2 build is memory hungry; never run two CUDA builds at once. Details in
 [`crates/hece-engine/README.md`](crates/hece-engine/README.md).
 

@@ -318,7 +318,9 @@ impl Daemon {
             }
             Err(e) => {
                 tracing::warn!(error = %e, "config reload failed");
-                "invalid_config"
+                // A missing CUDA runtime is fixed in the settings window, so name it.
+                e.downcast_ref::<crate::cuda::RuntimeError>()
+                    .map_or("invalid_config", crate::cuda::RuntimeError::code)
             }
         }
     }

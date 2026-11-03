@@ -75,10 +75,10 @@ plus the tools in `mise.toml`).
 - Windows 10 or 11, 64-bit (tested on Windows 11).
 - **Local transcription:** an NVIDIA GPU and a driver that supports CUDA 13. The release build is
   compiled for compute capability 8.9 and 12.0 (GeForce RTX 40 and RTX 50 series); other cards
-  are untested. The installer does not include the CUDA runtime: `cublas64_13.dll` and
-  `cudart64_13.dll` must be on `PATH`, which the
-  [CUDA Toolkit 13.x](https://developer.nvidia.com/cuda-downloads) installer sets up. An
-  on-demand download is planned ([#47](https://github.com/altintasutku/hece/issues/47)).
+  are untested. The installer does not include the CUDA runtime (cuBLAS, cudart): download it
+  from NVIDIA once (~426 MB) in **Hece Settings** or with `hece runtime download`
+  (`hece runtime status` checks it). An installed
+  [CUDA Toolkit 13.x](https://developer.nvidia.com/cuda-downloads) on `PATH` is used as is.
 - **Cloud transcription:** an API key for the provider, nothing else.
 
 ## Usage
@@ -152,6 +152,7 @@ The commented template written on first run is `TEMPLATE` in
 | `hece status`, `hece toggle` | ask or drive the running daemon |
 | `hece history`, `hece repaste [--raw]` | recent dictations; copy the last one again |
 | `hece model list\|download [id]` | local models |
+| `hece runtime status\|download` | the CUDA runtime from NVIDIA |
 | `hece key set\|delete <provider>` | API keys in the Credential Manager |
 | `hece autostart on\|off\|status`, `hece config`, `hece devices` | setup |
 | `hece dictate`, `hece bench` | one-off dictation; accuracy and latency benchmarks |

@@ -34,6 +34,8 @@ hyper-util.workspace = true
 getrandom.workspace = true
 reqwest.workspace = true
 sha2 = "0.10.9"
+# Unpacks the CUDA runtime DLLs from NVIDIA's archives (deflate only, zlib already in the tree).
+zip = { version = "9.2.2", default-features = false, features = ["deflate-flate2-zlib"] }
 
 
 [dev-dependencies]

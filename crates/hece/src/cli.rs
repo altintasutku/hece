@@ -58,6 +58,10 @@ pub enum Command {
     /// List or download local models.
     #[command(subcommand)]
     Model(ModelCommand),
+    /// Show or download the CUDA runtime the local engine needs (from NVIDIA, on demand).
+    #[cfg(windows)]
+    #[command(subcommand)]
+    Runtime(RuntimeCommand),
     /// Start hece at login.
     #[cfg(windows)]
     Autostart {
@@ -195,6 +199,16 @@ pub enum ModelCommand {
         /// Model id from `hece model list`; default: the first one.
         id: Option<String>,
     },
+}
+
+/// The CUDA runtime.
+#[cfg(windows)]
+#[derive(Debug, Clone, Copy, Subcommand)]
+pub enum RuntimeCommand {
+    /// Show whether the runtime is downloaded, provided by the system, or missing.
+    Status,
+    /// Download it from NVIDIA (resumes an interrupted download).
+    Download,
 }
 
 /// Autostart at login.

@@ -1,0 +1,83 @@
+name: Bug report
+description: Something in Hece does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please search existing issues first.
+
+        **Privacy:** do not paste transcripts, audio, API keys, or anything you dictated. Describe
+        what you said in general terms instead ("a long sentence with two names"). Security
+        problems go to [private vulnerability reporting](https://github.com/altintasutku/hece/security/advisories/new), not here.
+  - type: input
+    id: version
+    attributes:
+      label: Hece version
+      description: Output of `hece --version`, or the release zip name.
+      placeholder: hece 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Edition and build, from `winver`.
+      placeholder: Windows 11 Pro 24H2 (26100)
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Speech-to-text provider
+      description: The `kind` in the `[provider]` section of `config.toml` (`hece config` prints its path).
+      options:
+        - local (Whisper on the GPU)
+        - openai (OpenAI-compatible endpoint)
+        - deepgram
+        - Not sure / not relevant
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: GPU and model
+      description: For the local provider, your GPU and the model you use. For a cloud provider, which service (for example Groq).
+      placeholder: RTX 4060 8 GB, large-v3-turbo
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start Hece
+        2. Hold Ctrl+Shift+Space in Notepad and speak
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead, including any error code shown in the notification.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: |
+        From `%LOCALAPPDATA%\hece\hece.log`. Paste only the lines around the problem.
+        Hece does not log audio, transcripts or keys, but check what you paste and remove anything
+        personal. **Never paste transcripts, audio or API keys.**
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Config changes from the defaults (without keys), other apps involved, screenshots without personal text.

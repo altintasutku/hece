@@ -1,0 +1,98 @@
+name: Release
+
+# A v* tag builds the Windows installer and opens a draft GitHub release with the installer,
+# SHA256SUMS.txt and a build provenance attestation. Run it by hand to test the build: the
+# installer is then only uploaded as a workflow artifact.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    # CTranslate2's CUDA kernels take a while to compile on a hosted runner.
+    timeout-minutes: 360
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: '4'
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # rust, cmake and bun at the versions in mise.toml.
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
+      # Same major as the local toolkit (13.x); the hosted runner has no CUDA.
+      - uses: Jimver/cuda-toolkit@b8bf9c6c28f8a92fbb04dcfcaee872e60c57462d # v0.2.36
+        with:
+          cuda: '13.2.2'
+          method: local
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          # ct2rs does not rebuild when CUDA_ARCH_LIST changes: keep the list in the key.
+          key: release-crt-static-sm75-80-89-120
+      - name: Build installer
+        shell: pwsh
+        run: ./scripts/build-release.ps1
+      # Code signing through SignPath Foundation (#49). Skipped until the repository variable
+      # SIGNPATH_ORGANIZATION_ID and the secret SIGNPATH_API_TOKEN exist; see docs/code-signing.md.
+      - id: unsigned
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hece-windows-unsigned
+          path: target/dist/*.exe
+          if-no-files-found: error
+      - if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          connector-url: https://githubactions.connectors.signpath.io
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ startsWith(github.ref, 'refs/tags/') && 'release-signing' || 'test-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: target/signed
+      - name: Use the signed installer
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        run: |
+          Copy-Item target/signed/*.exe target/dist/ -Force
+          $exe = Get-ChildItem target/dist -Filter *.exe | Select-Object -First 1
+          $hash = (Get-FileHash -Algorithm SHA256 $exe.FullName).Hash.ToLowerInvariant()
+          Set-Content -Encoding ascii target/dist/SHA256SUMS.txt "$hash  $($exe.Name)"
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          subject-path: target/dist/*.exe
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hece-windows
+          path: target/dist/
+          if-no-files-found: error
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $notes = "docs/releases/$env:TAG.md"
+          $files = (Get-ChildItem target/dist -File).FullName
+          $ghArgs = @('release', 'create', $env:TAG) + $files + @('--draft', '--title', "Hece $env:TAG", '--verify-tag')
+          if (Test-Path $notes) { $ghArgs += @('--notes-file', $notes) } else { $ghArgs += '--generate-notes' }
+          gh @ghArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

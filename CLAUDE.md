@@ -29,10 +29,11 @@ cargo test --workspace
 
 - Run the daemon/CLI: `cargo run -p hece`
 - Settings app (in `apps/settings`, bun from `mise.toml`): `bun install`, `bun run check` (types + Svelte),
-  `bunx tauri dev` (window against the Vite dev server), `bunx tauri build --no-bundle` (release exe)
+  `bunx tauri dev` (window against the Vite dev server), `bunx tauri build --no-bundle` (release exe);
+  `bun run dev` alone renders in a browser with a mocked backend (`src/lib/devmock.ts`, for screenshots)
 - Turkish model (CTranslate2, into `.cache/models`): `uv run scripts/prepare_model.py`
 - Engine with CUDA on Windows: `powershell -File scripts/build-engine.ps1` (release `hece` + `hece-engine`; +crt-static, onnxruntime.dll loaded at run time)
-- Engine with CUDA on Linux: `CUDA_ARCH_LIST="8.9;12.0" CMAKE_BUILD_PARALLEL_LEVEL=4 CARGO_BUILD_JOBS=4 cargo build -p hece-engine --features cuda-dynamic`
+- Engine with CUDA on Linux: `CUDA_ARCH_LIST="7.5;8.0;8.9;12.0" CMAKE_BUILD_PARALLEL_LEVEL=4 CARGO_BUILD_JOBS=4 cargo build -p hece-engine --features cuda-dynamic`
   (never two CUDA builds at once; details in `crates/hece-engine/README.md`)
 - Never use `--all-features`; `cuda` needs a CUDA toolchain and CI does not have one.
 

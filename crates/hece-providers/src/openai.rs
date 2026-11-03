@@ -91,6 +91,7 @@ impl OpenAiProvider {
 
     async fn run(&self, req: ProviderRequest<'_>) -> Result<Transcript, ProviderError> {
         let name = self.cfg.name.as_str();
+        let language = http::requested_language(req.language);
         if req.audio.len() > self.caps.max_audio_samples {
             return Err(ProviderError::AudioTooLong {
                 provider: name.to_owned(),
@@ -109,7 +110,7 @@ impl OpenAiProvider {
             .part("file", file)
             .text("model", self.cfg.model.clone())
             .text("response_format", format);
-        if let Some(language) = req.language {
+        if let Some(language) = language {
             form = form.text("language", language.to_owned());
         }
         if let VocabularyHint::Prompt(prompt) = render(
@@ -143,7 +144,7 @@ impl OpenAiProvider {
             other => other?,
         };
         let parsed: Response = http::parse_json(name, &body)?;
-        Ok(parsed.into_transcript(name, req.language, self.cfg.segments))
+        Ok(parsed.into_transcript(name, language, self.cfg.segments))
     }
 }
 

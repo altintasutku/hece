@@ -57,6 +57,7 @@ pub fn build(
             } else {
                 let mut cfg = EngineConfig::default_for(model)?;
                 cfg.engine_path.clone_from(&p.engine);
+                cfg.dll_dir = crate::cuda::engine_dll_dir()?;
                 let client = Arc::new(EngineClient::new(cfg, Arc::new(ProcessSpawner)));
                 *engine = Some(Arc::clone(&client));
                 client
@@ -84,16 +85,19 @@ pub fn build(
     })
 }
 
+/// The vocabulary: `vocabulary_file` (must be readable), else `vocabulary.txt` next to the
+/// config if it exists. An empty one counts as none.
 pub fn read_vocabulary(cfg: &Config) -> anyhow::Result<Option<Arc<Vocabulary>>> {
-    cfg.transcription
-        .vocabulary_file
-        .as_ref()
-        .map(|path| {
-            std::fs::read_to_string(path)
-                .with_context(|| format!("cannot read {}", path.display()))
-                .map(|text| Arc::new(Vocabulary::parse(&text)))
-        })
-        .transpose()
+    let text = if let Some(path) = &cfg.transcription.vocabulary_file {
+        std::fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))?
+    } else {
+        let Ok(config) = crate::paths::config_file() else {
+            return Ok(None);
+        };
+        crate::vocabulary::read(&crate::vocabulary::path(None, &config))?
+    };
+    let vocab = Vocabulary::parse(&text);
+    Ok((!vocab.terms.is_empty()).then(|| Arc::new(vocab)))
 }
 
 pub fn setup(cfg: &Config) -> anyhow::Result<Setup> {

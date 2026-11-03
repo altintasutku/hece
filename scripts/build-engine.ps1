@@ -12,9 +12,10 @@ if (-not $cuda) { throw 'CUDA Toolkit not found' }
 $env:CUDA_PATH = $cuda.FullName -replace '\\', '/'
 $env:CUDA_TOOLKIT_ROOT_DIR = $env:CUDA_PATH
 $env:PATH = "$($cuda.FullName)\bin;$env:PATH"
-# 8.9 keeps CTranslate2's own arch list explicit (its default includes archs CUDA 13 dropped);
+# Turing (7.5, RTX 20) is the oldest arch CUDA 13 supports; 8.0 SASS also runs on Ampere (8.6, RTX 30),
+# 8.9 is Ada (RTX 40). An explicit list keeps CTranslate2's default (with archs CUDA 13 dropped) out;
 # 12.0 is Blackwell (RTX 50xx).
-$env:CUDA_ARCH_LIST = '8.9;12.0'
+$env:CUDA_ARCH_LIST = '7.5;8.0;8.9;12.0'
 $env:RUSTFLAGS = '-C target-feature=+crt-static'
-mise x -- cargo build --release -p hece -p hece-engine --features hece-engine/cuda,hece-engine/ort-dynamic
+mise x -- cargo build --release --locked -p hece -p hece-engine --features hece-engine/cuda,hece-engine/ort-dynamic
 exit $LASTEXITCODE

@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hece: free voice dictation for Windows, local and open source</title>
+<meta name="description" content="Hold a hotkey, speak, and Hece types your words into any app on Windows. Local Whisper on your GPU, many languages, no phantom text, your meaning kept. Free and open source.">
+<link rel="canonical" href="https://altintasutku.github.io/hece/">
+<meta name="theme-color" content="#07080a">
+<meta name="color-scheme" content="dark">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Hece">
+<meta property="og:title" content="Hece: talk, and it types">
+<meta property="og:description" content="Free, open-source voice dictation for Windows. Private, local Whisper on your own GPU.">
+<meta property="og:url" content="https://altintasutku.github.io/hece/">
+<meta property="og:image" content="https://altintasutku.github.io/hece/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="fonts/schibsted-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="styles.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "Hece",
+      "description": "Background voice dictation for Windows. Hold a hotkey, speak, and the text is pasted into the focused window. Local multilingual Whisper on the GPU or a cloud provider.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Windows",
+      "url": "https://altintasutku.github.io/hece/",
+      "downloadUrl": "https://github.com/altintasutku/hece/releases/latest",
+      "license": "https://opensource.org/licenses/MIT",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "inLanguage": "en",
+      "author": { "@id": "https://altintasutku.github.io/hece/#author" }
+    },
+    {
+      "@type": "Person",
+      "@id": "https://altintasutku.github.io/hece/#author",
+      "name": "Utku Altıntaş",
+      "url": "https://github.com/altintasutku"
+    },
+    {
+      "@type": "WebSite",
+      "name": "Hece",
+      "url": "https://altintasutku.github.io/hece/"
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./" aria-label="Hece home">He<i>·</i>ce</a>
+    <nav aria-label="Main">
+      <a class="hide-sm" href="#how">How it works</a>
+      <a class="hide-sm" href="#privacy">Privacy</a>
+      <a class="hide-sm" href="#faq">FAQ</a>
+      <a class="hide-sm" href="https://github.com/altintasutku/hece">GitHub</a>
+      <a class="btn btn-primary btn-sm" href="https://github.com/altintasutku/hece/releases/latest">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="wrap">
+      <div class="orb" aria-hidden="true"><div class="ring"></div><div class="core"></div><div class="wave"></div><div class="wave"></div></div>
+      <h1>Talk. Hece types.</h1>
+      <p class="lede">Hece is a free, open-source dictation app for Windows. Hold a key and speak; your words appear in whatever app you are using, transcribed on your own GPU.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/altintasutku/hece/releases/latest">Download for Windows</a>
+        <a class="btn btn-ghost" href="https://github.com/altintasutku/hece">Star on GitHub</a>
+      </div>
+      <p class="hint">Hold <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Space</kbd> and start talking</p>
+      <p class="req">Windows, 64-bit. Local mode needs an NVIDIA GPU; without one, use a cloud provider.</p>
+
+      <!-- DEMO (#58): hidden until the video exists. To show it (docs/demo-video.md):
+           1. Add site/demo.mp4 (H.264 + AAC, faststart, < 10 MB) and site/demo-poster.jpg.
+           2. Remove the `hidden` attribute from the figure and uncomment the <video> inside it. -->
+      <figure class="demo" hidden>
+        <!--
+        <video src="demo.mp4" poster="demo-poster.jpg" width="1280" height="720"
+               muted autoplay loop playsinline preload="metadata"
+               aria-label="Hece demo: hold Ctrl+Shift+Space, speak, and the text is pasted into a mail draft, a chat and a code editor"></video>
+        -->
+      </figure>
+
+      <div class="pillars">
+        <div class="pillar"><h2><span class="dot" style="background:var(--green)"></span>Private by default</h2><p>Local Whisper runs on your machine. In local mode, audio never leaves your PC.</p></div>
+        <div class="pillar"><h2><span class="dot" style="background:var(--blue)"></span>Speaks your language</h2><p>Multilingual Whisper, plus a vocabulary that spells your names and terms the way you do.</p></div>
+        <div class="pillar"><h2><span class="dot" style="background:var(--yellow)"></span>Keeps your meaning</h2><p>No phantom text from silence, and a cleanup step that is not allowed to drop a "not".</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="how">
+    <div class="wrap">
+      <p class="eyebrow">How it works</p>
+      <h2>Your cursor is the destination.</h2>
+      <p class="intro">Hece sits in the tray. When you hold the hotkey, it listens; when you let go, the text is pasted into the window you were typing in: a chat, an editor, a browser, a terminal.</p>
+      <div class="how">
+        <ol class="steps">
+          <li><b>Hold <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Space</kbd></b><span>Or switch to toggle mode: press once to start, once to stop.</span></li>
+          <li><b>Speak naturally</b><span>A small orb in the corner shows that Hece is listening.</span></li>
+          <li><b>Let go</b><span>The text lands where your cursor is, with one paste. <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Backspace</kbd> cancels.</span></li>
+        </ol>
+        <div class="scene" aria-label="Example: a dictated reply appears in a chat window">
+          <div class="orb" aria-hidden="true"><div class="ring"></div><div class="core"></div><div class="wave"></div><div class="wave"></div></div>
+          <div class="window">
+            <div class="bar"><span># release-planning</span></div>
+            <div class="msgs">
+              <div class="msg"><b>Maya</b>Is the Kubernetes rollout still on for Thursday?</div>
+              <div class="msg"><b>Sam</b>Waiting on the staging numbers.</div>
+            </div>
+            <div class="compose"><mark>Yes, but not before the staging check passes. I'll post the numbers by noon.</mark><span class="caret"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="quality">
+    <div class="wrap">
+      <p class="eyebrow">Quality</p>
+      <h2>Say it once. Get what you meant.</h2>
+      <p class="intro">Plain Whisper invents text in silence and mishears names. Hece adds checks between the model and your window.</p>
+      <div class="pairs">
+        <div class="pair">
+          <div class="said"><small>You said</small>"deploy the cuber netis config"</div>
+          <div class="got"><small>Hece wrote</small>Deploy the Kubernetes config.<br><span class="tag b">your vocabulary</span></div>
+        </div>
+        <div class="pair">
+          <div class="said"><small>You said</small>nothing, three seconds of silence</div>
+          <div class="got"><small>Hece wrote</small><del>Thanks for watching.</del><br><span class="tag y">phantom text filtered</span></div>
+        </div>
+        <div class="pair">
+          <div class="said"><small>You said</small>"um so I can't make it uh on Friday"</div>
+          <div class="got"><small>Hece wrote</small>I can't make it on Friday.<br><span class="tag g">"can't" kept</span></div>
+        </div>
+      </div>
+      <p class="note">Illustrative examples. Optional LLM cleanup only removes fillers and fixes punctuation; if its output drops a negation or changes length sharply, Hece pastes the raw text instead. Low-confidence results are flagged. The phantom-text filter knows the stock lines of 16 languages, including English, Spanish, German, French, Japanese and Chinese. The negation guard reads negations in 11, from English and Turkish to Polish and Russian; in others it still checks for empty output, added lines and big length changes.</p>
+    </div>
+  </section>
+
+  <section class="band" id="privacy">
+    <div class="wrap">
+      <p class="eyebrow">Local or cloud</p>
+      <h2>Your voice, your choice of engine.</h2>
+      <div class="modes">
+        <div class="mode">
+          <h3>Local</h3>
+          <p>Whisper large-v3 turbo running on your NVIDIA GPU through CTranslate2. Fine-tuned models for single languages are one click away.</p>
+          <ul>
+            <li>Audio never leaves your PC</li>
+            <li>The model loads when you need it and is released when idle</li>
+            <li>Pinned and checksummed model download</li>
+            <li>Other apps can share it through a local OpenAI-compatible API</li>
+          </ul>
+        </div>
+        <div class="mode">
+          <h3>Cloud</h3>
+          <p>No GPU? Bring your own key for a provider you trust.</p>
+          <ul>
+            <li>OpenAI-compatible endpoints, Deepgram, Groq</li>
+            <li>Keys are stored in the Windows Credential Manager</li>
+            <li>Audio goes only to the provider you pick</li>
+            <li>Switch back to local any time in the settings</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid">
+        <div><h3>No telemetry</h3><p>Hece sends nothing about you; it only checks GitHub once a day for a new version, which you can turn off. Audio, transcripts and keys are never logged.</p></div>
+        <div><h3>Out of clipboard history</h3><p>Pasted text never enters Win+V history or the cloud clipboard.</p></div>
+        <div><h3>History on your disk</h3><p>Recent dictations stay local so you can paste one again. Turn it off or cap it in the settings.</p></div>
+        <div><h3>Works where you paste</h3><p>One paste chord, no key-by-key typing and no keyboard hooks.</p></div>
+        <div><h3>Light when idle</h3><p>A small tray app; the model only takes memory while you use it.</p></div>
+        <div><h3>Open source, MIT</h3><p>Read the code, build it yourself, or help shape the Linux and macOS versions.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="faq">
+    <div class="wrap">
+      <p class="eyebrow">FAQ</p>
+      <h2>Questions, answered.</h2>
+      <div class="faq">
+        <details><summary>Is Hece free?</summary><p>Yes. Hece is free and open source under the MIT license. There is no account and no subscription. In cloud mode you pay your provider directly, if they charge.</p></details>
+        <details><summary>Which languages does it support?</summary><p>The default local model is multilingual Whisper large-v3 turbo, and Hece can download fine-tuned models for single languages (Turkish today). Accuracy varies by language, as it does for Whisper itself. Cloud providers and any CTranslate2 Whisper model work too.</p></details>
+        <details><summary>Do I need a GPU?</summary><p>Local transcription needs an NVIDIA GPU with CUDA. Without one, pick a cloud provider (OpenAI-compatible, Deepgram or Groq) and add your key in the settings.</p></details>
+        <details><summary>Does it work in every app?</summary><p>It works anywhere you can paste: chat apps, editors, browsers, terminals. Windows blocks pasting into apps running as administrator; the text then stays in Hece's history so you can paste it yourself.</p></details>
+        <details><summary>Windows shows a SmartScreen warning. Is that safe?</summary><p>New, unsigned apps get this warning. Code signing is in progress. Until then you can check the source on GitHub and build it yourself.</p></details>
+        <details><summary>What about macOS and Linux?</summary><p>Hece is Windows-first. Linux and macOS are planned; the core is written to be portable, and help is welcome on GitHub.</p></details>
+        <details><summary>How is Hece different from Windows voice typing (Win+H)?</summary><p>Hece can run fully offline on your GPU, learns your vocabulary, filters phantom text, and lets you pick the model or provider. Win+H has no personal vocabulary.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap">
+      <div class="orb" aria-hidden="true"><div class="ring"></div><div class="core"></div><div class="wave"></div><div class="wave"></div></div>
+      <h2>Give your keyboard a break.</h2>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/altintasutku/hece/releases/latest">Download for Windows</a>
+        <a class="btn btn-ghost" href="https://github.com/altintasutku/hece">View the source</a>
+      </div>
+      <p class="req">Free and open source. No account.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span>Hece · MIT license</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/altintasutku/hece">GitHub</a>
+      <a href="https://github.com/altintasutku/hece/releases">Releases</a>
+      <a href="https://github.com/altintasutku/hece/issues">Report an issue</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

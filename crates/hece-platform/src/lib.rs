@@ -2,16 +2,19 @@
 //! Ctrl+V, the focused window, the daemon control pipe, toasts and autostart. Other platforms
 //! have no implementation yet.
 
+mod i18n;
 pub mod overlay;
+
+pub use i18n::{Lang, menu_label, tray_status, ui_language};
 
 #[cfg(windows)]
 mod windows;
 
 #[cfg(windows)]
 pub use windows::{
-    CANCEL_SHORTCUT, ControlListener, ControlRequest, Desktop, Inserted, Overlay, RECORD_SHORTCUT,
-    Window, autostart_enabled, control_request, copy, disable_autostart, enable_autostart,
-    focused_window, insert, notify, open, pipe_server_is_current_user,
+    ControlListener, ControlRequest, Desktop, Inserted, Overlay, Window, autostart_enabled,
+    control_request, copy, disable_autostart, enable_autostart, focused_window, insert, notify,
+    open, pipe_server_is_current_user,
 };
 
 /// Which global shortcut fired.
@@ -37,7 +40,7 @@ pub enum HotkeyEvent {
 pub enum PlatformError {
     /// Another application already owns the shortcut.
     #[error("the shortcut {0} is already used by another application")]
-    HotkeyTaken(&'static str),
+    HotkeyTaken(String),
     /// Setting up hotkeys failed.
     #[error("global shortcuts could not be set up")]
     Hotkey,
@@ -75,7 +78,7 @@ impl PlatformError {
     #[must_use]
     pub fn code(&self) -> &'static str {
         match self {
-            Self::HotkeyTaken(_) => "hotkey_taken",
+            Self::HotkeyTaken(_) => "hotkey_in_use",
             Self::Hotkey => "hotkey_failed",
             Self::Clipboard => "clipboard_failed",
             Self::Paste => "paste_failed",
@@ -120,6 +123,8 @@ pub enum MenuAction {
     Logs,
     /// Quit the daemon.
     Quit,
+    /// Open the page of the newer release (shown once one is offered).
+    Update,
 }
 
 /// Input from the desktop thread.

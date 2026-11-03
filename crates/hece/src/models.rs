@@ -3,19 +3,14 @@
 //! is renamed only once every file matches its size and sha256, so a half-downloaded model is
 //! never picked up.
 
-use std::io::Write as _;
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
-use sha2::{Digest, Sha256};
+pub use crate::download::{DownloadError, Progress, client};
+use crate::download::{Pinned, disk, fetch_verified};
 
 /// Where catalog files are fetched from: `{HUB}/{repo}/resolve/{revision}/{file}`.
 pub const HUB: &str = "https://huggingface.co";
-/// A stalled transfer fails after this long without data (it resumes on the next try).
-const STALL: Duration = Duration::from_secs(30);
-/// How often progress is reported while a file downloads, in bytes.
-const REPORT_EVERY: u64 = 1 << 20;
 
 /// One file of a model.
 #[derive(Debug)]
@@ -54,7 +49,7 @@ impl Model {
 }
 
 /// The models Hece can download. The first one is the default.
-pub const CATALOG: &[Model] = &[TURKISH, TURBO];
+pub const CATALOG: &[Model] = &[TURBO, TURKISH];
 
 const TURKISH: Model = Model {
     id: "large-v3-turkish-ec03ccf-int8",
@@ -132,79 +127,6 @@ pub fn find(id: &str) -> Option<&'static Model> {
     CATALOG.iter().find(|m| m.id == id)
 }
 
-/// How far a download is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Progress {
-    /// Bytes on disk so far, over all files.
-    pub done: u64,
-    /// Bytes in total.
-    pub total: u64,
-}
-
-/// Download failures. [`DownloadError::code`] is the stable user-facing code.
-#[derive(Debug, thiserror::Error)]
-pub enum DownloadError {
-    /// The server could not be reached or the transfer broke off.
-    #[error("the model could not be downloaded (network)")]
-    Network,
-    /// The server answered with an error status.
-    #[error("the model server answered {0}")]
-    Http(u16),
-    /// A file did not match its pinned sha256; it was deleted.
-    #[error("{0} did not match its checksum and was deleted")]
-    Checksum(&'static str),
-    /// The disk is full.
-    #[error("not enough disk space for the model")]
-    DiskFull,
-    /// Any other file system error.
-    #[error("the model folder could not be written")]
-    Disk,
-    /// The download was cancelled; what arrived is kept for the next try.
-    #[error("the download was cancelled")]
-    Cancelled,
-}
-
-impl DownloadError {
-    /// Stable error code safe to show to users.
-    #[must_use]
-    pub fn code(&self) -> &'static str {
-        match self {
-            Self::Network => "model_network_error",
-            Self::Http(_) => "model_http_error",
-            Self::Checksum(_) => "model_checksum_mismatch",
-            Self::DiskFull => "model_disk_full",
-            Self::Disk => "model_disk_error",
-            Self::Cancelled => "model_download_cancelled",
-        }
-    }
-}
-
-fn disk(e: &std::io::Error) -> DownloadError {
-    if e.kind() == std::io::ErrorKind::StorageFull {
-        DownloadError::DiskFull
-    } else {
-        DownloadError::Disk
-    }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    bytes.iter().fold(String::new(), |mut out, b| {
-        let _ = write!(out, "{b:02x}");
-        out
-    })
-}
-
-/// The HTTP client for downloads: a stall timeout but no overall one (files are large).
-#[must_use]
-pub fn client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .connect_timeout(STALL)
-        .read_timeout(STALL)
-        .build()
-        .unwrap_or_default()
-}
-
 /// Where downloaded models live (`%LOCALAPPDATA%\hece\models`).
 pub fn models_dir() -> anyhow::Result<PathBuf> {
     Ok(crate::paths::state_dir()?.join("models"))
@@ -239,18 +161,22 @@ pub async fn download(
     let total = model.size();
     let mut finished = 0;
     for file in model.files {
-        let path = partial.join(file.name);
-        fetch(client, hub, model, file, &path, |done| {
+        let url = format!(
+            "{hub}/{}/resolve/{}/{}",
+            model.repo, model.revision, file.name
+        );
+        let pinned = Pinned {
+            url: &url,
+            size: file.size,
+            sha256: file.sha256,
+        };
+        fetch_verified(client, pinned, &partial.join(file.name), |done| {
             progress(Progress {
                 done: finished + done,
                 total,
             })
         })
         .await?;
-        if sha256_of(&path).map_err(|e| disk(&e))? != file.sha256 {
-            let _ = std::fs::remove_file(&path);
-            return Err(DownloadError::Checksum(file.name));
-        }
         finished += file.size;
     }
     // A leftover, incomplete target folder would block the rename.
@@ -259,75 +185,6 @@ pub async fn download(
     }
     std::fs::rename(&partial, &target).map_err(|e| disk(&e))?;
     Ok(target)
-}
-
-/// Brings `path` to `file.size` bytes from the hub, resuming when the server allows it.
-async fn fetch(
-    client: &reqwest::Client,
-    hub: &str,
-    model: &Model,
-    file: &ModelFile,
-    path: &Path,
-    mut progress: impl FnMut(u64) -> ControlFlow<()>,
-) -> Result<(), DownloadError> {
-    let mut have = std::fs::metadata(path).map_or(0, |m| m.len());
-    if have > file.size {
-        std::fs::remove_file(path).map_err(|e| disk(&e))?;
-        have = 0;
-    }
-    if have == file.size {
-        return Ok(());
-    }
-    let url = format!(
-        "{hub}/{}/resolve/{}/{}",
-        model.repo, model.revision, file.name
-    );
-    let mut request = client.get(&url);
-    if have > 0 {
-        request = request.header(reqwest::header::RANGE, format!("bytes={have}-"));
-    }
-    let mut response = request.send().await.map_err(|_| DownloadError::Network)?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(DownloadError::Http(status.as_u16()));
-    }
-    let resumed = status == reqwest::StatusCode::PARTIAL_CONTENT
-        && response
-            .headers()
-            .get(reqwest::header::CONTENT_RANGE)
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.starts_with(&format!("bytes {have}-")));
-    let opened = if resumed {
-        std::fs::OpenOptions::new().append(true).open(path)
-    } else {
-        // A full answer (or a range we did not ask for) starts the file over.
-        have = 0;
-        std::fs::File::create(path)
-    };
-    let mut out = opened.map_err(|e| disk(&e))?;
-    let mut reported = have;
-    if progress(have).is_break() {
-        return Err(DownloadError::Cancelled);
-    }
-    while let Some(chunk) = response.chunk().await.map_err(|_| DownloadError::Network)? {
-        out.write_all(&chunk).map_err(|e| disk(&e))?;
-        have += chunk.len() as u64;
-        if have - reported >= REPORT_EVERY || have == file.size {
-            reported = have;
-            if progress(have).is_break() {
-                return Err(DownloadError::Cancelled);
-            }
-        }
-    }
-    out.flush().map_err(|e| disk(&e))?;
-    Ok(())
-}
-
-fn sha256_of(path: &Path) -> std::io::Result<String> {
-    let mut hasher = Sha256::new();
-    let mut file = std::fs::File::open(path)?;
-    std::io::copy(&mut file, &mut hasher)?;
-    Ok(hex(&hasher.finalize()))
 }
 
 #[cfg(test)]
@@ -339,6 +196,7 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
+    use crate::download::hex;
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -458,9 +316,22 @@ mod tests {
         let err = download(&client(), &server.uri(), &m, &dir, keep_going)
             .await
             .unwrap_err();
-        assert_eq!(err.code(), "model_checksum_mismatch");
+        assert_eq!(err.code(), "download_checksum_mismatch");
         assert!(!dir.join("test-model.partial").join("model.bin").exists());
         assert!(!installed(&m, &dir));
+    }
+
+    #[tokio::test]
+    async fn oversized_answer_stops_at_the_pinned_size() {
+        let server = MockServer::start().await;
+        serve(&server, "model.bin", &[0_u8; 4096]).await;
+        let m = model(vec![file("model.bin", b"0123456789")]);
+        let dir = temp_dir();
+        let err = download(&client(), &server.uri(), &m, &dir, keep_going)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), "download_checksum_mismatch");
+        assert!(!dir.join("test-model.partial").join("model.bin").exists());
     }
 
     #[tokio::test]
@@ -470,7 +341,7 @@ mod tests {
         let err = download(&client(), &server.uri(), &m, &temp_dir(), keep_going)
             .await
             .unwrap_err();
-        assert_eq!(err.code(), "model_http_error");
+        assert_eq!(err.code(), "download_http_error");
     }
 
     #[tokio::test]
@@ -485,7 +356,7 @@ mod tests {
         })
         .await
         .unwrap_err();
-        assert_eq!(err.code(), "model_download_cancelled");
+        assert_eq!(err.code(), "download_cancelled");
         assert!(!installed(&m, &dir));
     }
 

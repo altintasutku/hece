@@ -1,10 +1,11 @@
 //! Pure, I/O-free logic shared by all Hece crates: vocabulary, hallucination filter,
-//! confidence, negation guard and shared types.
+//! confidence, negation guard, shortcut parsing and shared types.
 
 pub mod chunker;
 pub mod confidence;
 pub mod guard;
 pub mod hallucination;
+pub mod hotkey;
 pub mod ipc;
 pub mod metrics;
 pub mod recorder;
@@ -18,7 +19,7 @@ pub use guard::{GuardVerdict, RejectReason, cleanup_guard, is_negation_token, ne
 pub use hallucination::{
     Filtered, NO_SPEECH_THRESHOLD, SHORT_SEGMENT_MAX_WORDS, filter_segments, is_known_hallucination,
 };
-pub use text::{fold, normalize};
+pub use text::{fold, normalize, paste_safe};
 pub use types::{Segment, Transcript};
 pub use vocab::{
     DEFAULT_PROMPT_PREFIX, DEFAULT_PROMPT_TOKENS, MAX_PROMPT_TOKENS, MAX_TERM_CHARS, Vocabulary,

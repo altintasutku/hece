@@ -30,6 +30,8 @@ pub struct CaptureConfig {
     pub post_roll: Duration,
     /// Where the input level of the latest audio block is published (for a level meter).
     pub level: Level,
+    /// While set, captured audio is replaced by silence (a sound cue is playing).
+    pub mute: Mute,
 }
 
 impl Default for CaptureConfig {
@@ -40,7 +42,30 @@ impl Default for CaptureConfig {
             max_duration: Duration::from_mins(10),
             post_roll: Duration::from_millis(300),
             level: Level::default(),
+            mute: Mute::default(),
         }
+    }
+}
+
+/// Silences the capture until a given time, so a sound cue the microphone hears from the
+/// speaker is not transcribed. Shared like [`Level`]; a time in the past mutes nothing.
+#[derive(Debug, Clone, Default)]
+pub struct Mute(Arc<Mutex<Option<Instant>>>);
+
+impl Mute {
+    /// Mutes until `end`, or keeps a later end already set.
+    pub fn until(&self, end: Instant) {
+        let mut current = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if current.is_none_or(|c| c < end) {
+            *current = Some(end);
+        }
+    }
+
+    fn active(&self) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_some_and(|end| Instant::now() < end)
     }
 }
 
@@ -132,6 +157,7 @@ fn find_device(name: Option<&str>) -> Result<cpal::Device, AudioError> {
 /// Shared between the audio callback and the capture thread.
 struct Shared {
     level: Level,
+    mute: Mute,
     mono: Mutex<Vec<f32>>,
     limit_frames: usize,
     limit_hit: AtomicBool,
@@ -156,7 +182,10 @@ impl Shared {
             (self.events)(CaptureEvent::Live { latency });
         }
         let frames: Vec<f32> = data.iter().map(|s| s.to_sample::<f32>()).collect();
-        let mono = downmix(&frames, channels);
+        let mut mono = downmix(&frames, channels);
+        if self.mute.active() {
+            mono.fill(0.0);
+        }
         self.level.set(rms(&mono));
         let mut buf = self.mono.lock().unwrap_or_else(PoisonError::into_inner);
         let room = self.limit_frames.saturating_sub(buf.len());
@@ -267,6 +296,7 @@ impl Capture {
         let post_roll = cfg.post_roll;
         let max = cfg.max_duration;
         let level = cfg.level.clone();
+        let mute = cfg.mute.clone();
         level.set(0.0);
         let events: Box<dyn Fn(CaptureEvent) + Send + Sync> = Box::new(events);
         let thread = std::thread::Builder::new()
@@ -276,6 +306,7 @@ impl Capture {
                     let rate = supported.sample_rate();
                     let shared = Arc::new(Shared {
                         level,
+                        mute,
                         mono: Mutex::new(Vec::new()),
                         limit_frames: frames_for(max, rate),
                         limit_hit: AtomicBool::new(false),
@@ -411,6 +442,7 @@ mod tests {
         let events = Mutex::new(events);
         Shared {
             level,
+            mute: Mute::default(),
             mono: Mutex::new(Vec::new()),
             limit_frames,
             limit_hit: AtomicBool::new(false),
@@ -446,6 +478,23 @@ mod tests {
         let mono = s.mono.lock().unwrap().clone();
         assert_eq!(mono.len(), 2);
         assert!((mono[0] - 0.5).abs() < 1e-3 && mono[1].abs() < 1e-6);
+    }
+
+    #[test]
+    fn muted_audio_is_kept_as_silence() {
+        let (tx, _rx) = mpsc::channel();
+        let s = shared(usize::MAX, tx);
+        s.mute.until(Instant::now() + Duration::from_mins(1));
+        s.mute.until(Instant::now());
+        s.push::<f32>(&[0.5, -0.5], 1);
+        assert_eq!(
+            *s.mono.lock().unwrap(),
+            [0.0, 0.0],
+            "an earlier end keeps the later one"
+        );
+        *s.mute.0.lock().unwrap() = None;
+        s.push::<f32>(&[0.5], 1);
+        assert_eq!(*s.mono.lock().unwrap(), [0.0, 0.0, 0.5]);
     }
 
     #[test]

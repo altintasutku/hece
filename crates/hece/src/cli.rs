@@ -31,7 +31,7 @@ pub enum Command {
     Devices,
     /// Record once from the microphone (Enter stops), transcribe and print the text.
     Dictate(DictateArgs),
-    /// Run the dictation daemon (Ctrl+Shift+Space records, Ctrl+Shift+Backspace cancels).
+    /// Run the dictation daemon (default: Ctrl+Shift+Space records, Ctrl+Shift+Backspace cancels).
     ///
     /// Settings come from the config file; a commented template is written on first run.
     /// `hecew.exe` (no arguments) runs the same daemon without a console window.
@@ -58,6 +58,10 @@ pub enum Command {
     /// List or download local models.
     #[command(subcommand)]
     Model(ModelCommand),
+    /// Show or download the CUDA runtime the local engine needs (from NVIDIA, on demand).
+    #[cfg(windows)]
+    #[command(subcommand)]
+    Runtime(RuntimeCommand),
     /// Start hece at login.
     #[cfg(windows)]
     Autostart {
@@ -195,6 +199,16 @@ pub enum ModelCommand {
         /// Model id from `hece model list`; default: the first one.
         id: Option<String>,
     },
+}
+
+/// The CUDA runtime.
+#[cfg(windows)]
+#[derive(Debug, Clone, Copy, Subcommand)]
+pub enum RuntimeCommand {
+    /// Show whether the runtime is downloaded, provided by the system, or missing.
+    Status,
+    /// Download it from NVIDIA (resumes an interrupted download).
+    Download,
 }
 
 /// Autostart at login.

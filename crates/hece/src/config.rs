@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use hece_core::hotkey::{self, Hotkey};
 use hece_core::ipc::MAX_AUDIO_SAMPLES;
 use serde::Deserialize;
 
@@ -13,13 +14,15 @@ const MAX_SECONDS: u64 = (MAX_AUDIO_SAMPLES / 16_000) as u64;
 pub const TEMPLATE: &str = r#"# Hece configuration. Restart hece after editing.
 
 [recording]
-mode = "hold"              # hold: hold Ctrl+Shift+Space while talking; toggle: press to start/stop
+mode = "hold"              # hold: hold the record shortcut while talking; toggle: press to start/stop
+hotkey = "Ctrl+Shift+Space"            # record shortcut: Ctrl, Alt, Shift, Win + a key; F13-F24 work alone
+cancel_hotkey = "Ctrl+Shift+Backspace" # cancels the recording or the latest dictation
 # device = "Microphone (...)" # a name from `hece devices`; default: the system microphone
 max_seconds = 600          # at most 660
 
 [transcription]
-language = "tr"            # remove for auto-detect
-# vocabulary_file = 'C:\Users\you\hece-vocabulary.txt'  # one term per line, # comments
+# language = "en"          # pin the spoken language; default: auto-detect
+# vocabulary_file = 'C:\Users\you\hece-vocabulary.txt'  # default: vocabulary.txt next to this file (Settings edits it)
 prompt_tokens = 200
 allow_cloud_fallback = false   # a local provider may fall back to a cloud one only if true
 
@@ -60,6 +63,13 @@ max_days = 7
 
 [ui]
 overlay = true             # animated sphere in the top-right corner while recording
+
+[feedback]
+sounds = true              # short soft tones when recording starts, stops or is cancelled
+volume = 50                # 1..100
+
+[updates]
+check = true               # once a day, ask GitHub for a newer release (one GET, nothing about you is sent)
 "#;
 
 /// The whole file.
@@ -74,6 +84,8 @@ pub struct Config {
     pub api: ApiConfig,
     pub history: HistoryConfig,
     pub ui: UiConfig,
+    pub feedback: FeedbackConfig,
+    pub updates: UpdatesConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -90,6 +102,8 @@ pub struct Recording {
     pub mode: RecordMode,
     pub device: Option<String>,
     pub max_seconds: u64,
+    pub hotkey: String,
+    pub cancel_hotkey: String,
 }
 
 impl Default for Recording {
@@ -98,7 +112,27 @@ impl Default for Recording {
             mode: RecordMode::Hold,
             device: None,
             max_seconds: 600,
+            hotkey: hotkey::DEFAULT_RECORD.to_owned(),
+            cancel_hotkey: hotkey::DEFAULT_CANCEL.to_owned(),
         }
+    }
+}
+
+impl Recording {
+    /// The record and cancel shortcuts; errors name the field and end with a stable code.
+    pub fn hotkeys(&self) -> Result<(Hotkey, Hotkey), String> {
+        let parse = |field: &str, text: &str| {
+            text.parse::<Hotkey>()
+                .map_err(|e| format!("[recording] {field} {text:?} {e} ({})", e.code()))
+        };
+        let record = parse("hotkey", &self.hotkey)?;
+        let cancel = parse("cancel_hotkey", &self.cancel_hotkey)?;
+        if record == cancel {
+            return Err(
+                "[recording] hotkey and cancel_hotkey must differ (hotkey_duplicate)".to_owned(),
+            );
+        }
+        Ok((record, cancel))
     }
 }
 
@@ -343,6 +377,43 @@ impl Default for UiConfig {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct UpdatesConfig {
+    pub check: bool,
+}
+
+impl Default for UpdatesConfig {
+    fn default() -> Self {
+        Self { check: true }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct FeedbackConfig {
+    pub sounds: bool,
+    /// Percent, 1..=100.
+    pub volume: u8,
+}
+
+impl Default for FeedbackConfig {
+    fn default() -> Self {
+        Self {
+            sounds: true,
+            volume: 50,
+        }
+    }
+}
+
+impl FeedbackConfig {
+    /// The cue volume (0..=1) when sounds are on.
+    #[must_use]
+    pub fn cue_volume(&self) -> Option<f32> {
+        self.sounds.then(|| f32::from(self.volume) / 100.0)
+    }
+}
+
 /// Config problems; messages name the file and the field.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -357,6 +428,40 @@ pub enum ConfigError {
     Invalid { path: PathBuf, message: String },
 }
 
+/// Drops values a serde message quotes (`invalid type: string "sk-…"`, ``unknown variant `…` ``):
+/// a key pasted into the wrong field must not reach the log or a toast. Backticked names that
+/// look like config field names stay, so "unknown field `max_secs`" still says what is wrong.
+fn redact_values(message: &str) -> String {
+    let looks_like_field = |s: &str| {
+        !s.is_empty()
+            && s.len() <= 24
+            && s.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    };
+    let mut out = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some(start) = rest.find(['"', '`']) {
+        let quote = &rest[start..=start];
+        out.push_str(&rest[..=start]);
+        let after = &rest[start + 1..];
+        let Some(len) = after.find(quote) else {
+            out.push('…');
+            out.push_str(quote);
+            return out;
+        };
+        let inner = &after[..len];
+        out.push_str(if quote == "`" && looks_like_field(inner) {
+            inner
+        } else {
+            "…"
+        });
+        out.push_str(quote);
+        rest = &after[len + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
 impl Config {
     /// Parses and validates `text`.
     pub fn parse(text: &str) -> Result<Self, String> {
@@ -366,9 +471,9 @@ impl Config {
             Some(span) => format!(
                 "line {}: {}",
                 text[..span.start].matches('\n').count() + 1,
-                e.message()
+                redact_values(e.message())
             ),
-            None => e.message().to_owned(),
+            None => redact_values(e.message()),
         })?;
         cfg.validate()?;
         Ok(cfg)
@@ -378,11 +483,15 @@ impl Config {
         if !(1..=MAX_SECONDS).contains(&self.recording.max_seconds) {
             return Err(format!("[recording] max_seconds must be 1..={MAX_SECONDS}"));
         }
+        self.recording.hotkeys()?;
         if self.transcription.prompt_tokens > hece_core::MAX_PROMPT_TOKENS {
             return Err(format!(
                 "[transcription] prompt_tokens must be at most {}",
                 hece_core::MAX_PROMPT_TOKENS
             ));
+        }
+        if !(1..=100).contains(&self.feedback.volume) {
+            return Err("[feedback] volume must be 1..=100".to_owned());
         }
         if self.history.enabled && self.history.max_entries == 0 {
             return Err("[history] max_entries must be at least 1 (or enabled = false)".to_owned());
@@ -452,6 +561,9 @@ mod tests {
         for text in [
             "[provider]\nkey = sk-pasted\n",
             "[provider]\napi_key = \"sk-pasted\"\n",
+            "[provider]\nkind = \"sk-pasted\"\n",
+            "[recording]\nmax_seconds = \"sk-pasted\"\n",
+            "[provider]\nsk-pasted = 1\n",
         ] {
             let err = Config::parse(text).unwrap_err();
             assert!(
@@ -459,6 +571,21 @@ mod tests {
                 "{err}"
             );
         }
+    }
+
+    #[test]
+    fn hotkeys_default_and_validate() {
+        let cfg: Config = toml::from_str("").unwrap();
+        let (record, cancel) = cfg.recording.hotkeys().unwrap();
+        assert_eq!(record.to_string(), "Ctrl+Shift+Space");
+        assert_eq!(cancel.to_string(), "Ctrl+Shift+Backspace");
+        let err = Config::parse("[recording]\nhotkey = \"K\"\n").unwrap_err();
+        assert!(
+            err.starts_with("[recording] hotkey ") && err.ends_with("(hotkey_no_modifier)"),
+            "{err}"
+        );
+        let err = Config::parse("[recording]\ncancel_hotkey = \"ctrl+shift+space\"\n").unwrap_err();
+        assert!(err.ends_with("(hotkey_duplicate)"), "{err}");
     }
 
     #[test]
@@ -471,6 +598,24 @@ mod tests {
     fn ui_overlay_can_be_off() {
         let cfg: Config = toml::from_str("[ui]\noverlay = false\n").unwrap();
         assert!(!cfg.ui.overlay);
+    }
+
+    #[test]
+    fn update_check_defaults_on() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert!(cfg.updates.check);
+        let cfg: Config = toml::from_str("[updates]\ncheck = false\n").unwrap();
+        assert!(!cfg.updates.check);
+    }
+
+    #[test]
+    fn feedback_sounds_default_on_and_parse() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert_eq!(cfg.feedback.cue_volume(), Some(0.5));
+        let cfg: Config = toml::from_str("[feedback]\nsounds = false\nvolume = 80\n").unwrap();
+        assert_eq!(cfg.feedback.cue_volume(), None);
+        let err = Config::parse("[feedback]\nvolume = 0\n").unwrap_err();
+        assert_eq!(err, "[feedback] volume must be 1..=100");
     }
 
     #[test]

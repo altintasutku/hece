@@ -1,7 +1,8 @@
 //! The daemon's control pipe (`hece status`, `hece toggle`): one short line in, one line out.
 //! Same protection as the engine pipe: owner/SYSTEM/Administrators only, local clients only,
-//! and first instance only, so a second daemon cannot share the name. The name is predictable,
-//! so clients and a failed bind check that the pipe belongs to this user.
+//! and first instance only, so a second daemon cannot share the name. Pipe names are
+//! machine-wide, so clients and a failed bind check who serves the pipe
+//! ([`pipe_server_is_trusted`]).
 
 use std::path::Path;
 use std::time::Duration;
@@ -14,7 +15,7 @@ use interprocess::os::windows::security_descriptor::SecurityDescriptor;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 
-use super::pipe_server_is_current_user;
+use super::pipe_server_is_trusted;
 use crate::PlatformError;
 
 /// Protected DACL: full access for the pipe's owner, SYSTEM and Administrators, nobody else.
@@ -37,8 +38,15 @@ pub struct ControlRequest {
     stream: Stream,
 }
 
+fn pipe_name(path: &Path) -> Result<String, PlatformError> {
+    super::pipe_name(path).map_err(|e| {
+        tracing::warn!(kind = ?e.kind(), "pipe key unavailable");
+        PlatformError::Control
+    })
+}
+
 fn name(path: &Path) -> Result<interprocess::local_socket::Name<'static>, PlatformError> {
-    hece_core::ipc::pipe_name(path)
+    pipe_name(path)?
         .to_fs_name::<GenericFilePath>()
         .map_err(|_| PlatformError::Control)
 }
@@ -103,16 +111,14 @@ impl ControlRequest {
 /// Opens the pipe as a client. Tokio asks for `SECURITY_IDENTIFICATION`, so a server learns
 /// who connected but cannot act as them.
 fn connect(path: &Path) -> Result<NamedPipeClient, PlatformError> {
-    let stream = ClientOptions::new()
-        .open(hece_core::ipc::pipe_name(path))
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::PermissionDenied {
-                PlatformError::ForeignPipe
-            } else {
-                PlatformError::NotRunning
-            }
-        })?;
-    if pipe_server_is_current_user(&stream) {
+    let stream = ClientOptions::new().open(pipe_name(path)?).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            PlatformError::ForeignPipe
+        } else {
+            PlatformError::NotRunning
+        }
+    })?;
+    if pipe_server_is_trusted(&stream) {
         Ok(stream)
     } else {
         Err(PlatformError::ForeignPipe)

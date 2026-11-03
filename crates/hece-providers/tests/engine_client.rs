@@ -80,7 +80,7 @@ mod platform {
 
     impl Listener {
         pub fn bind(socket: &Path) -> io::Result<Self> {
-            let name = hece_core::ipc::pipe_name(socket);
+            let name = hece_platform::pipe_name(socket)?;
             let next = ServerOptions::new().create(&name)?;
             Ok(Self { name, next })
         }

@@ -14,7 +14,7 @@ mod windows;
 pub use windows::{
     ControlListener, ControlRequest, Desktop, Inserted, Overlay, Window, autostart_enabled,
     control_request, copy, disable_autostart, enable_autostart, focused_window, insert, notify,
-    open, pipe_server_is_current_user,
+    open, pipe_name, pipe_server_is_trusted,
 };
 
 /// Which global shortcut fired.

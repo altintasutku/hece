@@ -129,7 +129,7 @@ pub struct EngineConfig {
     /// CUDA runtime).
     pub dll_dir: Option<PathBuf>,
     /// Socket path of the worker; on Windows the worker listens on
-    /// [`hece_core::ipc::pipe_name`] of this path.
+    /// `hece_platform::pipe_name` of this path.
     pub socket: PathBuf,
     /// Directory holding the `CTranslate2` model.
     pub model_dir: PathBuf,
@@ -325,7 +325,13 @@ async fn open(socket: &Path, _deadline: Instant) -> Option<Stream> {
 /// which would spawn another worker.
 #[cfg(windows)]
 async fn open(socket: &Path, deadline: Instant) -> Option<Stream> {
-    let name = hece_core::ipc::pipe_name(socket);
+    let name = match hece_platform::pipe_name(socket) {
+        Ok(name) => name,
+        Err(e) => {
+            tracing::warn!(kind = ?e.kind(), "pipe key unavailable");
+            return None;
+        }
+    };
     loop {
         match tokio::net::windows::named_pipe::ClientOptions::new().open(&name) {
             Ok(stream) => return Some(stream),
@@ -588,10 +594,11 @@ impl EngineClient {
             }
             sleep(RETRY_INTERVAL).await;
         };
-        // The pipe name is predictable and machine-wide: never send audio to another account.
+        // Pipe names are machine-wide: never send audio to another account or a sandboxed or
+        // lower-integrity process.
         #[cfg(windows)]
-        if !hece_platform::pipe_server_is_current_user(&stream) {
-            tracing::warn!("engine pipe is held by another user");
+        if !hece_platform::pipe_server_is_trusted(&stream) {
+            tracing::warn!("engine pipe is held by an untrusted process");
             Self::kill_child(state).await;
             return Err(EngineClientError::ForeignPipe);
         }

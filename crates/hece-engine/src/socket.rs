@@ -1,5 +1,5 @@
 //! Worker socket location and safe binding: a unix socket, or on Windows a named pipe derived
-//! from the same path (see [`hece_core::ipc::pipe_name`]).
+//! from the same path (see `hece_platform::pipe_name`).
 
 use std::ffi::OsString;
 use std::fs::File;

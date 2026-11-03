@@ -68,6 +68,8 @@ checkbox) at least 3:1 (`#6b6e72`).
   every change. Long controls (a file path) go on their own line under the row, not in the row's control slot.
 - **Status text:** "Stored ✓" or "Saved" in `--violet` (600). Errors in `--danger` with their stable code in
   parentheses.
+- **Warning line:** a full-width line inside the card between rows (hairline above, 14 px padding), 12.5 px
+  `--ink` 600. For risks that are not errors, e.g. a server address with plain `http://` to another machine.
 - **Banner:** `--surface-2` card above the settings card, text in `--ink`, a white pill action on the right.
 - **Navigation (app):** wordmark on top, then text links in `--mute`; the active one is `--ink` on `--surface-2`
   with a hairline ring, 8 px radius.

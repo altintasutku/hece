@@ -63,6 +63,31 @@ pub fn autostart_enabled() -> Result<bool, PlatformError> {
     reg(&["query", RUN_KEY, "/v", RUN_VALUE])
 }
 
+/// Replaces `path`'s ACL with one full-control entry for the current user (no inherited
+/// entries), via `icacls.exe`.
+pub fn restrict_to_user(path: &Path) -> Result<(), PlatformError> {
+    let (Some(domain), Some(user)) = (std::env::var_os("USERDOMAIN"), std::env::var_os("USERNAME"))
+    else {
+        return Err(PlatformError::Permissions);
+    };
+    let mut grant = domain;
+    grant.push("\\");
+    grant.push(user);
+    grant.push(":F");
+    let ok = Command::new("icacls.exe")
+        .arg(path)
+        .args(["/inheritance:r", "/grant:r"])
+        .arg(grant)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if ok {
+        Ok(())
+    } else {
+        Err(PlatformError::Permissions)
+    }
+}
+
 /// Opens `path` with its default application (a folder in Explorer, a file in its editor).
 pub fn open(path: &Path) -> Result<(), PlatformError> {
     Command::new("explorer.exe")

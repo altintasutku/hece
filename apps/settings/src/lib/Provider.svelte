@@ -77,6 +77,24 @@
     refresh();
   }
 
+  // Plain http:// to another machine sends audio (and cleanup text) unencrypted over the network.
+  function plainHttpRemote(url: string): boolean {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return false;
+    }
+    if (parsed.protocol !== "http:") return false;
+    const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return !(host === "localhost" || host === "::1" || /^127\./.test(host));
+  }
+  const plainHttp = $derived(
+    (choice !== "local" && plainHttpRemote(text("provider.base_url"))) ||
+      plainHttpRemote(text("fallback.base_url")) ||
+      plainHttpRemote(text("cleanup.base_url")),
+  );
+
   function modelChanges(model: string): Record<string, Value> {
     const changes: Record<string, Value> = { "provider.model": model };
     if (choice !== "custom") changes["provider.segments"] = model.startsWith("whisper") || null;
@@ -230,6 +248,10 @@
   {/if}
 {/if}
 
+{#if plainHttp}
+  <p class="warn" role="note">{t.provider.plainHttp}</p>
+{/if}
+
 {#if choice !== "local"}
   <KeyRow section="provider" stored={snap.keys.provider ?? false} onchange={refresh}
     help={t.provider.keyHelp[choice]} />
@@ -251,4 +273,8 @@
 
 <style>
   .path { width: 300px; }
+  .warn {
+    margin: 0; padding: 14px 0; border-top: 1px solid var(--hairline);
+    color: var(--ink); font-size: 12.5px; font-weight: 600;
+  }
 </style>

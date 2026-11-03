@@ -2,7 +2,8 @@
 // screenshots. Loaded only when Vite serves the app outside Tauri; never part of the build.
 // `?daemon=not_running` shows the start banner, `?kind=openai` or `?kind=groq` the cloud rows,
 // `?hotkey=Alt+F13` a changed record shortcut, `?conflict=1` a shortcut another app owns,
-// `?cuda=missing` or `?cuda=nogpu` the CUDA runtime row.
+// `?cuda=missing` or `?cuda=nogpu` the CUDA runtime row, `?kind=openai&url=http://192.168.1.20:8000/v1`
+// a custom server (plain http to another machine shows the warning).
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { Snapshot } from "./api";
 
@@ -13,7 +14,7 @@ const snap: Snapshot = {
   values: {
     "provider.kind": query.get("kind") === "groq" ? "openai" : (query.get("kind") ?? "local"),
     "provider.model_dir": "",
-    "provider.base_url": query.get("kind") === "groq" ? "https://api.groq.com/openai/v1" : "https://api.openai.com/v1",
+    "provider.base_url": query.get("url") ?? (query.get("kind") === "groq" ? "https://api.groq.com/openai/v1" : "https://api.openai.com/v1"),
     "provider.model": query.get("kind") === "groq" ? "whisper-large-v3" : "whisper-1",
     "provider.name": null,
     "transcription.language": null,

@@ -22,6 +22,9 @@ const KEYS: &[&str] = &[
     "provider.model",
     "provider.key",
     "provider.segments",
+    // Read only, for the plain-HTTP warning.
+    "fallback.base_url",
+    "cleanup.base_url",
     "transcription.language",
     "transcription.allow_cloud_fallback",
     "recording.mode",

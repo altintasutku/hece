@@ -772,11 +772,7 @@ pub struct Paths {
 }
 
 /// Starts the local API with the daemon's providers (shares the loaded model).
-async fn start_api(
-    cfg: &Config,
-    paths: &Paths,
-    setup: &crate::providers::Setup,
-) -> anyhow::Result<()> {
+fn start_api(cfg: &Config, paths: &Paths, setup: &crate::providers::Setup) -> anyhow::Result<()> {
     let state = Arc::new(crate::api::ApiState {
         providers: Arc::clone(&setup.providers),
         cleaner: setup.cleaner.clone(),
@@ -786,7 +782,7 @@ async fn start_api(
         token: crate::api::token(&paths.state_dir.join("api-token"))?,
         slots: tokio::sync::Semaphore::new(crate::api::MAX_CONCURRENT),
     });
-    let addr = crate::api::serve(state, cfg.api.port).await?;
+    let addr = crate::api::serve(state, cfg.api.port)?;
     tracing::info!(port = addr.port(), "local API listening");
     output::status(&format!(
         "local API on http://{addr}/v1 (token in api-token)"
@@ -918,7 +914,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
     let setup = setup(&cfg)?;
     // The API is optional: a busy port must not take dictation down with it.
     if cfg.api.enabled
-        && let Err(e) = start_api(&cfg, &paths, &setup).await
+        && let Err(e) = start_api(&cfg, &paths, &setup)
     {
         tracing::error!(error = %e, port = cfg.api.port, "local API did not start");
         toast(&Toast::ApiNotStarted(cfg.api.port).to_string());

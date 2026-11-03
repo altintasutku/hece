@@ -9,7 +9,7 @@ use std::process::ExitCode;
 use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use hece::{models, settings};
+use hece::{models, settings, vocabulary};
 use serde_json::{Map, Value};
 use tauri::ipc::Channel;
 
@@ -27,6 +27,8 @@ const KEYS: &[&str] = &[
     "recording.mode",
     "recording.device",
     "recording.max_seconds",
+    "recording.hotkey",
+    "recording.cancel_hotkey",
     "ui.overlay",
     "feedback.sounds",
     "updates.check",
@@ -88,6 +90,31 @@ async fn set_values(changes: Map<String, Value>) -> Result<String, String> {
         .map(|(k, v)| (k.as_str(), v.clone()))
         .collect();
     settings::set(&config()?, &changes)?;
+    Ok(settings::reload().await)
+}
+
+#[tauri::command]
+fn vocabulary() -> Result<settings::VocabularyView, String> {
+    settings::vocabulary(&config()?)
+}
+
+/// Saves the vocabulary list; returns how it is used and the daemon's reload answer.
+#[tauri::command]
+async fn save_vocabulary(entries: Vec<String>) -> Result<(vocabulary::Check, String), String> {
+    let check = settings::save_vocabulary(&config()?, &entries)?;
+    Ok((check, settings::reload().await))
+}
+
+#[tauri::command]
+async fn import_vocabulary(path: String) -> Result<Vec<String>, String> {
+    settings::import_vocabulary(std::path::Path::new(path.trim()))
+}
+
+/// Switches to another vocabulary file (`null`: the default); returns the reload answer.
+#[tauri::command]
+async fn use_vocabulary_file(path: Option<String>) -> Result<String, String> {
+    let path = path.map(|p| PathBuf::from(p.trim()));
+    settings::use_vocabulary_file(&config()?, path.as_deref())?;
     Ok(settings::reload().await)
 }
 
@@ -197,7 +224,11 @@ fn main() -> ExitCode {
             delete_key,
             start_daemon,
             download_model,
-            cancel_download
+            cancel_download,
+            vocabulary,
+            save_vocabulary,
+            import_vocabulary,
+            use_vocabulary_file
         ])
         .run(tauri::generate_context!());
     if run.is_ok() {

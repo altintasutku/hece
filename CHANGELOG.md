@@ -13,6 +13,7 @@ The first public release (v0.1.0) is being prepared. Windows only.
 
 - Background voice dictation: hold **Ctrl+Shift+Space** and speak, release to insert the text into
   the focused window; a toggle mode starts and stops on a press. **Ctrl+Shift+Backspace** cancels.
+  Both shortcuts can be changed (`[recording] hotkey` / `cancel_hotkey`, or Settings → Shortcuts).
 - Insertion through the clipboard and a single paste; your previous clipboard is restored, and
   transcripts stay out of Win+V history and the cloud clipboard.
 - Local transcription with Whisper on CTranslate2 (NVIDIA GPU), no Python needed. The model runs
@@ -28,6 +29,9 @@ The first public release (v0.1.0) is being prepared. Windows only.
 - Quality layers: personal vocabulary, a hallucination filter, a low-confidence signal, and an
   optional LLM cleanup (OpenAI-compatible or Anthropic) guarded against changed meaning such as
   dropped negations or added lines.
+- Vocabulary editor in Settings: add, edit, remove and reorder terms (earlier wins), see which are
+  skipped or past the length limit, import another file. Stored in `vocabulary.txt` next to
+  `config.toml` unless `vocabulary_file` names one; comments in the file are kept.
 - Long recordings are transcribed in chunks while you are still speaking, so the text is ready
   soon after you stop.
 - Tray icon that shows the state (idle, recording, transcribing) and has the menu.
@@ -51,8 +55,9 @@ The first public release (v0.1.0) is being prepared. Windows only.
 - Update check: once a day Hece asks GitHub for the latest release (one request, nothing about you
   is sent) and shows a notification and a tray entry when a newer version exists. It is the only
   network call Hece makes on its own; turn it off in the settings or with `[updates] check = false`.
-- Per-user Windows install and uninstall scripts (no administrator rights), Start menu entries and
-  optional autostart. The release zip can include the CUDA runtime.
+- Per-user Windows installer (no administrator rights) with Start menu entries, autostart and an
+  uninstaller. The installer does not include the CUDA runtime; local transcription needs the
+  CUDA 13 DLLs on `PATH` (CUDA Toolkit 13.x).
 
 ### Security
 

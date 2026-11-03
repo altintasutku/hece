@@ -3,11 +3,16 @@
 //! changed by posting a thread message, because the icon may only be touched on this thread.
 #![allow(unsafe_code, reason = "Win32 message loop FFI wrapper")]
 
+use std::str::FromStr;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
+use hece_core::hotkey::Hotkey;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
@@ -20,16 +25,14 @@ use crate::{
     tray_status, ui_language,
 };
 
-/// The record shortcut: not a Windows default and free next to apps that take Ctrl+Alt+Space
-/// (Claude desktop) or Win+Alt+Space (`PowerToys`); one hand can hold it.
-pub const RECORD_SHORTCUT: &str = "Ctrl+Shift+Space";
-/// The cancel shortcut.
-pub const CANCEL_SHORTCUT: &str = "Ctrl+Shift+Backspace";
-
 /// Thread message carrying a [`TrayState`] in `wParam`.
 const WM_TRAY_STATE: u32 = WM_APP + 1;
 /// Thread message: a label waits on the update channel.
 const WM_TRAY_UPDATE: u32 = WM_APP + 2;
+/// Thread message: a [`Rebind`] is waiting on the channel.
+const WM_REBIND: u32 = WM_APP + 3;
+/// How long [`Desktop::set_hotkeys`] waits for the desktop thread.
+const REBIND_TIMEOUT: Duration = Duration::from_secs(2);
 /// Menu id of the update entry (the fixed entries use their index in [`MENU`]).
 const UPDATE_ID: &str = "update";
 const ICON_SIZE: u32 = 32;
@@ -49,26 +52,49 @@ pub struct Desktop {
     thread_id: u32,
     thread: Option<JoinHandle<()>>,
     updates: mpsc::Sender<String>,
+    rebind: mpsc::Sender<Rebind>,
+}
+
+/// New shortcuts for the desktop thread, with where to send the outcome.
+#[derive(Debug)]
+struct Rebind {
+    record: Hotkey,
+    cancel: Hotkey,
+    reply: mpsc::SyncSender<Result<(), PlatformError>>,
+}
+
+/// The channels the desktop thread reads after a thread message.
+struct Inbox {
+    updates: mpsc::Receiver<String>,
+    rebinds: mpsc::Receiver<Rebind>,
 }
 
 impl Desktop {
-    /// Registers the shortcuts, shows the tray icon and calls `handler` for every shortcut
-    /// press/release and menu click. The handler runs on the desktop thread and must be quick
-    /// (e.g. send on a channel).
+    /// Registers the `record` and `cancel` shortcuts, shows the tray icon and calls `handler`
+    /// for every shortcut press/release and menu click. The handler runs on the desktop thread
+    /// and must be quick (e.g. send on a channel).
     pub fn start(
+        record: Hotkey,
+        cancel: Hotkey,
         handler: impl Fn(DesktopEvent) + Send + Sync + 'static,
     ) -> Result<Self, PlatformError> {
         let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<u32, PlatformError>>(1);
         let (updates, updates_rx) = mpsc::channel();
+        let (rebind, rebind_rx) = mpsc::channel();
+        let inbox = Inbox {
+            updates: updates_rx,
+            rebinds: rebind_rx,
+        };
         let thread = std::thread::Builder::new()
             .name("hece-desktop".to_owned())
-            .spawn(move || run(handler, &ready_tx, &updates_rx))
+            .spawn(move || run(Bound { record, cancel }, handler, &ready_tx, &inbox))
             .map_err(|_| PlatformError::Hotkey)?;
         match ready_rx.recv() {
             Ok(Ok(thread_id)) => Ok(Self {
                 thread_id,
                 thread: Some(thread),
                 updates,
+                rebind,
             }),
             Ok(Err(e)) => {
                 let _ = thread.join();
@@ -100,6 +126,108 @@ impl Desktop {
             unsafe { PostThreadMessageW(self.thread_id, WM_TRAY_UPDATE, 0, 0) };
         }
     }
+
+    /// Replaces both shortcuts. If one cannot be registered (another application owns it),
+    /// the previous pair stays active and [`PlatformError::HotkeyTaken`] names the culprit.
+    pub fn set_hotkeys(&self, record: Hotkey, cancel: Hotkey) -> Result<(), PlatformError> {
+        let (reply, answer) = mpsc::sync_channel(1);
+        self.rebind
+            .send(Rebind {
+                record,
+                cancel,
+                reply,
+            })
+            .map_err(|_| PlatformError::Hotkey)?;
+        // SAFETY: posting a message to a thread id has no memory-safety preconditions; if the
+        // thread is gone the call just fails and the wait below times out.
+        unsafe { PostThreadMessageW(self.thread_id, WM_REBIND, 0, 0) };
+        answer
+            .recv_timeout(REBIND_TIMEOUT)
+            .map_err(|_| PlatformError::Hotkey)?
+    }
+}
+
+/// The registered pair.
+struct Bound {
+    record: Hotkey,
+    cancel: Hotkey,
+}
+
+impl Bound {
+    fn keys(&self) -> Result<(HotKey, HotKey), PlatformError> {
+        Ok((to_hotkey(&self.record)?, to_hotkey(&self.cancel)?))
+    }
+
+    /// Registers both or neither.
+    fn register(&self, manager: &GlobalHotKeyManager) -> Result<(HotKey, HotKey), PlatformError> {
+        let (record, cancel) = self.keys()?;
+        if let Err(e) = manager.register(record) {
+            tracing::warn!(shortcut = %self.record, error = %e, "hotkey registration failed");
+            return Err(PlatformError::HotkeyTaken(self.record.to_string()));
+        }
+        if let Err(e) = manager.register(cancel) {
+            tracing::warn!(shortcut = %self.cancel, error = %e, "hotkey registration failed");
+            let _ = manager.unregister(record);
+            return Err(PlatformError::HotkeyTaken(self.cancel.to_string()));
+        }
+        Ok((record, cancel))
+    }
+}
+
+/// The `RegisterHotKey` key for a configured shortcut.
+fn to_hotkey(hotkey: &Hotkey) -> Result<HotKey, PlatformError> {
+    let m = hotkey.modifiers;
+    let mut mods = Modifiers::empty();
+    for (on, flag) in [
+        (m.ctrl, Modifiers::CONTROL),
+        (m.alt, Modifiers::ALT),
+        (m.shift, Modifiers::SHIFT),
+        (m.win, Modifiers::META),
+    ] {
+        if on {
+            mods |= flag;
+        }
+    }
+    let code = Code::from_str(&hotkey.key.code()).map_err(|_| PlatformError::Hotkey)?;
+    Ok(HotKey::new(Some(mods), code))
+}
+
+/// The ids the event handler matches: record, cancel.
+type Ids = Arc<[AtomicU32; 2]>;
+
+fn store_ids(ids: &Ids, (record, cancel): (HotKey, HotKey)) {
+    ids[0].store(record.id(), Ordering::SeqCst);
+    ids[1].store(cancel.id(), Ordering::SeqCst);
+}
+
+/// Swaps the registered pair for `request`'s, restoring the old pair if that fails.
+fn rebind(manager: &GlobalHotKeyManager, bound: &mut Bound, ids: &Ids, request: &Rebind) {
+    let next = Bound {
+        record: request.record,
+        cancel: request.cancel,
+    };
+    if next.record == bound.record && next.cancel == bound.cancel {
+        let _ = request.reply.send(Ok(()));
+        return;
+    }
+    if let Ok((record, cancel)) = bound.keys() {
+        let _ = manager.unregister(record);
+        let _ = manager.unregister(cancel);
+    }
+    let result = match next.register(manager) {
+        Ok(keys) => {
+            store_ids(ids, keys);
+            *bound = next;
+            Ok(())
+        }
+        Err(e) => {
+            if bound.register(manager).is_err() {
+                tracing::error!("previous shortcuts could not be registered again");
+            }
+            Err(e)
+        }
+    };
+    let _ = request.reply.send(result);
 }
 
 /// Adds the update entry on top of the menu, or relabels it.
@@ -132,10 +260,10 @@ fn state_from(value: usize) -> TrayState {
     .unwrap_or(TrayState::Idle)
 }
 
-fn tooltip(state: TrayState) -> String {
+fn tooltip(state: TrayState, record: &Hotkey) -> String {
     format!(
         "Hece: {}",
-        tray_status(state, ui_language(), RECORD_SHORTCUT)
+        tray_status(state, ui_language(), &record.to_string())
     )
 }
 
@@ -167,7 +295,7 @@ fn icon(state: TrayState) -> Option<Icon> {
     Icon::from_rgba(rgba, size, size).ok()
 }
 
-fn tray() -> Option<(TrayIcon, Menu)> {
+fn tray(record: &Hotkey) -> Option<(TrayIcon, Menu)> {
     let menu = Menu::new();
     for (i, action) in MENU.iter().enumerate() {
         if *action == MenuAction::Settings || *action == MenuAction::Quit {
@@ -183,7 +311,7 @@ fn tray() -> Option<(TrayIcon, Menu)> {
     }
     let mut builder = TrayIconBuilder::new()
         .with_menu(Box::new(menu.clone()))
-        .with_tooltip(tooltip(TrayState::Idle));
+        .with_tooltip(tooltip(TrayState::Idle, record));
     if let Some(icon) = icon(TrayState::Idle) {
         builder = builder.with_icon(icon);
     }
@@ -199,36 +327,36 @@ fn menu_action(id: &str) -> Option<MenuAction> {
 }
 
 fn run(
+    mut bound: Bound,
     handler: impl Fn(DesktopEvent) + Send + Sync + 'static,
     ready: &mpsc::SyncSender<Result<u32, PlatformError>>,
-    updates: &mpsc::Receiver<String>,
+    inbox: &Inbox,
 ) {
-    let mods = Some(Modifiers::CONTROL | Modifiers::SHIFT);
-    let record = HotKey::new(mods, Code::Space);
-    let cancel = HotKey::new(mods, Code::Backspace);
     let Ok(manager) = GlobalHotKeyManager::new() else {
         let _ = ready.send(Err(PlatformError::Hotkey));
         return;
     };
-    for (key, name) in [(record, RECORD_SHORTCUT), (cancel, CANCEL_SHORTCUT)] {
-        if let Err(e) = manager.register(key) {
-            tracing::warn!(shortcut = name, error = %e, "hotkey registration failed");
-            let _ = ready.send(Err(PlatformError::HotkeyTaken(name)));
+    let ids: Ids = Arc::new([AtomicU32::new(0), AtomicU32::new(0)]);
+    match bound.register(&manager) {
+        Ok(keys) => store_ids(&ids, keys),
+        Err(e) => {
+            let _ = ready.send(Err(e));
             return;
         }
     }
     // A missing tray (e.g. no shell yet) is not fatal; shortcuts still work.
-    let tray = tray();
+    let tray = tray(&bound.record);
     if tray.is_none() {
         tracing::warn!("tray icon could not be created");
     }
-    let handler = std::sync::Arc::new(handler);
-    let (record_id, cancel_id) = (record.id(), cancel.id());
-    let hotkey_handler = std::sync::Arc::clone(&handler);
+    let mut state = TrayState::Idle;
+    let handler = Arc::new(handler);
+    let hotkey_handler = Arc::clone(&handler);
+    let handler_ids = Arc::clone(&ids);
     GlobalHotKeyEvent::set_event_handler(Some(move |e: GlobalHotKeyEvent| {
         let shortcut = match e.id() {
-            id if id == record_id => Shortcut::Record,
-            id if id == cancel_id => Shortcut::Cancel,
+            id if id == handler_ids[0].load(Ordering::SeqCst) => Shortcut::Record,
+            id if id == handler_ids[1].load(Ordering::SeqCst) => Shortcut::Cancel,
             _ => return,
         };
         hotkey_handler(DesktopEvent::Hotkey(match e.state() {
@@ -251,18 +379,27 @@ fn run(
     // messages. GetMessageW returns 0 on WM_QUIT and -1 on error, both end the loop.
     while unsafe { GetMessageW(&raw mut msg, std::ptr::null_mut(), 0, 0) } > 0 {
         if msg.hwnd.is_null() && msg.message == WM_TRAY_STATE {
+            state = state_from(msg.wParam);
             if let Some((tray, _)) = &tray {
-                let state = state_from(msg.wParam);
                 let _ = tray.set_icon(icon(state));
-                let _ = tray.set_tooltip(Some(tooltip(state)));
+                let _ = tray.set_tooltip(Some(tooltip(state, &bound.record)));
             }
             continue;
         }
         if msg.hwnd.is_null() && msg.message == WM_TRAY_UPDATE {
-            while let Ok(label) = updates.try_recv() {
+            while let Ok(label) = inbox.updates.try_recv() {
                 if let Some((_, menu)) = &tray {
                     show_update(menu, &mut update_item, &label);
                 }
+            }
+            continue;
+        }
+        if msg.hwnd.is_null() && msg.message == WM_REBIND {
+            while let Ok(request) = inbox.rebinds.try_recv() {
+                rebind(&manager, &mut bound, &ids, &request);
+            }
+            if let Some((tray, _)) = &tray {
+                let _ = tray.set_tooltip(Some(tooltip(state, &bound.record)));
             }
             continue;
         }

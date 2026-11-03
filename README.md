@@ -124,7 +124,7 @@ comments. If you edit the file by hand, restart Hece.
 | `[transcription]` | `language` (default: auto-detect), `vocabulary_file` (default: `vocabulary.txt` next to `config.toml`), `allow_cloud_fallback` |
 | `[provider]`, `[fallback]` | `kind` (local, openai, deepgram), model, `base_url`, `key` (keyring, none or `env:VARIABLE`) |
 | `[cleanup]` | optional LLM cleanup: `anthropic` or `openai` kind (OpenAI, OpenRouter, Ollama, llama.cpp server) |
-| `[api]` | local OpenAI-compatible API on `127.0.0.1`, off by default, token-protected (the token is in `%LOCALAPPDATA%hecepi-token`; delete it and restart Hece to rotate it) |
+| `[api]` | local OpenAI-compatible API on `127.0.0.1`, off by default, token-protected (the token is in `%LOCALAPPDATA%\hece\api-token`; delete it and restart Hece to rotate it) |
 | `[history]`, `[ui]`, `[feedback]`, `[updates]` | history size and age, overlay, sounds, update check |
 
 The commented template written on first run is `TEMPLATE` in

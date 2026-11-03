@@ -128,7 +128,7 @@ fn connect(dir: &TempDir) -> Client {
         match std::fs::OpenOptions::new()
             .read(true)
             .write(true)
-            .open(hece_core::ipc::pipe_name(&dir.sock()))
+            .open(hece_platform::pipe_name(&dir.sock()).unwrap())
         {
             Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY) && Instant::now() < deadline => {
                 thread::sleep(Duration::from_millis(10));
@@ -534,7 +534,8 @@ fn bind_creates_the_directory_and_lock_file() {
 fn bind_fails_when_another_process_owns_the_pipe_name() {
     use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName};
     let dir = TempDir::new();
-    let name = hece_core::ipc::pipe_name(&dir.sock())
+    let name = hece_platform::pipe_name(&dir.sock())
+        .unwrap()
         .to_fs_name::<GenericFilePath>()
         .unwrap();
     let _squatter = ListenerOptions::new().name(name).create_sync().unwrap();

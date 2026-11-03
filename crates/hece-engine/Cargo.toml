@@ -35,6 +35,7 @@ tracing-subscriber.workspace = true
 interprocess.workspace = true
 tokio.workspace = true
 widestring.workspace = true
+hece-platform = { path = "../hece-platform" }
 
 [dev-dependencies]
 serde_json.workspace = true

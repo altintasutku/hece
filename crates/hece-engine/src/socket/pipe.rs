@@ -61,7 +61,8 @@ pub(super) fn listen(path: &Path) -> Result<Listener, BindError> {
         .build()
         .map_err(|e| io(&e))?;
     let sd = SecurityDescriptor::deserialize(PIPE_SDDL).map_err(|e| io(&e))?;
-    let name = hece_core::ipc::pipe_name(path)
+    let name = hece_platform::pipe_name(path)
+        .map_err(|e| io(&e))?
         .to_fs_name::<GenericFilePath>()
         .map_err(|e| io(&e))?;
     let options = ListenerOptions::new().name(name).security_descriptor(sd);

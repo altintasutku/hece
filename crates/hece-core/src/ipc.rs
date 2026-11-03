@@ -229,13 +229,15 @@ pub fn decode_body<T: DeserializeOwned>(body: &[u8]) -> Result<T, IpcError> {
 }
 
 /// Windows named pipe that stands in for the unix socket at `socket`:
-/// `\\.\pipe\hece-<16 hex digits>`, a stable FNV-1a hash of the lowercased path, so the worker
-/// and its client agree on the name and each socket location gets its own pipe.
+/// `\\.\pipe\hece-<16 hex digits>`, a stable FNV-1a hash of the per-user `key` followed by the
+/// lowercased path. Every process of the user reads the same key, so the worker and its client
+/// agree on the name and each socket location gets its own pipe; other accounts do not know the
+/// key, so they cannot compute the name and create the pipe first.
 #[must_use]
-pub fn pipe_name(socket: &Path) -> String {
-    let key = socket.as_os_str().to_string_lossy().to_lowercase();
+pub fn pipe_name(socket: &Path, key: &str) -> String {
+    let path = socket.as_os_str().to_string_lossy().to_lowercase();
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in key.bytes() {
+    for byte in key.bytes().chain(path.bytes()) {
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
@@ -372,19 +374,30 @@ mod tests {
         assert_eq!(IpcError::AudioTooLong(1).code(), "invalid_audio");
     }
     #[test]
-    fn pipe_name_is_stable_and_case_insensitive() {
-        let name = pipe_name(Path::new(r"C:\Users\a\AppData\Local\hece\engine.sock"));
+    fn pipe_name_is_stable_case_insensitive_and_keyed() {
+        let path = Path::new(r"C:\Users\a\AppData\Local\hece\engine.sock");
+        let name = pipe_name(path, "k1");
         assert!(name.starts_with(r"\\.\pipe\hece-"));
         assert_eq!(name.len(), r"\\.\pipe\hece-".len() + 16);
         assert_eq!(
             name,
-            pipe_name(Path::new(r"c:\users\A\appdata\local\HECE\engine.sock"))
+            pipe_name(
+                Path::new(r"c:\users\A\appdata\local\HECE\engine.sock"),
+                "k1"
+            )
         );
         assert_ne!(
             name,
-            pipe_name(Path::new(r"C:\Users\b\AppData\Local\hece\engine.sock"))
+            pipe_name(
+                Path::new(r"C:\Users\b\AppData\Local\hece\engine.sock"),
+                "k1"
+            )
         );
+        assert_ne!(name, pipe_name(path, "k2"));
         // FNV-1a of the empty string: the hash must not change between builds or versions.
-        assert_eq!(pipe_name(Path::new("")), r"\\.\pipe\hece-cbf29ce484222325");
+        assert_eq!(
+            pipe_name(Path::new(""), ""),
+            r"\\.\pipe\hece-cbf29ce484222325"
+        );
     }
 }

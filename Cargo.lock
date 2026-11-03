@@ -2379,6 +2379,7 @@ dependencies = [
  "ct2rs",
  "flate2",
  "hece-core",
+ "hece-platform",
  "hound",
  "interprocess",
  "libz-sys",
@@ -2399,6 +2400,7 @@ name = "hece-platform"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "getrandom 0.4.3",
  "global-hotkey",
  "hece-core",
  "interprocess",

@@ -117,9 +117,9 @@ With Windows animation effects off it stops rotating and deforming; colour still
 ## Website
 
 - **Images:** real generated images (Higgsfield / Gemini), never shapes drawn in CSS or SVG. Sources and prompts
-  live in #92. WebP in `site/img`, longest side 1920 px, `width`/`height` set; below the fold `loading="lazy"`.
+  live in #92. WebP quality 90 in `site/img` at the source size (no downscaling), `width`/`height` set; below the fold `loading="lazy"`.
   - Hero: a voice wave in the site's dot colours (coral, amber, green, blue, violet) that narrows into one text
-    cursor. A 5 s silent loop (`hero-wave.mp4`, H.264, faststart, under 1 MB) over its first frame as poster;
+    cursor. A 5 s silent loop (`hero-wave.mp4`, H.264 CRF 20 at the source size, faststart, about 2.4 MB) over its first frame as poster;
     it plays only without `prefers-reduced-motion`. Full bleed (`.bleed`), top and bottom fade into `--canvas`.
   - Local or cloud: a candid night photo of someone talking to their screen, hands off the keyboard. Card
     radius and hairline border.

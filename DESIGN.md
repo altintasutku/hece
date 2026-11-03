@@ -34,8 +34,10 @@ checkbox) at least 3:1 (`#6b6e72`).
 
 - **Schibsted Grotesk** (variable, 400-700) for everything. Headings 600 with -0.02em tracking. App: section
   title 32 px, body and labels 14 px (labels 600), helper text 12.5 px, controls 13 px.
-- **Instrument Serif** only for the `He·ce` wordmark (site header, app sidebar).
-- Both are bundled (SIL OFL): `site/fonts` for the site, `apps/settings/src/fonts` plus `@fontsource/instrument-serif`
+- **Instrument Serif** for the `He·ce` wordmark (site header, app sidebar) and, on the site, as an italic accent
+  with one rule: what is spoken is serif italic, what is typed is sans. Used for *Talk.* in the hero headline and
+  the "You said" quotes in Quality; nowhere else, so it stays rare.
+- Both are bundled (SIL OFL; the serif in regular and italic): `site/fonts` for the site, `apps/settings/src/fonts` plus `@fontsource/instrument-serif`
   for the app. No network font requests. No Inter or Geist. No uppercase or mono labels.
 
 ## Space and shape
@@ -124,6 +126,10 @@ With Windows animation effects off it stops rotating and deforming; colour still
   - Local or cloud: a candid night photo of someone talking to their screen, hands off the keyboard. Card
     radius and hairline border.
   - Final call to action: a keyboard at rest under the buttons, full bleed like the hero.
+  - Feature cards (the three under the hero): a 3:2 photo in the same night light as the desk photo, with a
+    small piece of the real UI over its bottom edge on a blurred dark panel (Local status, language chips, a
+    negation kept), then the title and text. The UI piece is HTML, never part of the image.
+- **Hero cursor:** a blinking text cursor in the wave's colours ends the headline, as if waiting for the text.
   - People are never shown typing. Text on screens is never shown (generated text is unreadable).
 - **Copy:** facts must match `.agents/product-marketing.md`. No invented numbers, testimonials or logos. Examples
   are synthetic and labelled as illustrative.

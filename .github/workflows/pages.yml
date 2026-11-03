@@ -26,6 +26,10 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      # Pages caches files for 10 minutes. Stamp the stylesheet link with the commit so new HTML never
+      # pairs with a cached old stylesheet.
+      - name: Stamp stylesheet version
+        run: sed -i "s/styles\.css?v=dev/styles.css?v=${GITHUB_SHA::7}/" site/index.html site/404.html
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: site

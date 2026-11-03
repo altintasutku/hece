@@ -61,6 +61,10 @@ const en = {
         return { text: "Saved · restart Hece when the dictation finishes", error: false };
       case "invalid_config":
         return { text: "Saved, but Hece cannot start with these settings (invalid_config)", error: true };
+      case "cuda_runtime_missing":
+        return { text: "Saved · download the CUDA runtime for the local engine (cuda_runtime_missing)", error: true };
+      case "no_nvidia_gpu":
+        return { text: "Saved · the local engine needs an NVIDIA graphics card (no_nvidia_gpu)", error: true };
       default:
         return { text: `Saved · could not reach Hece (${answer})`, error: true };
     }
@@ -131,6 +135,14 @@ const en = {
     ] as [string, string][],
     fallback: "Cloud fallback",
     fallbackHelp: "Let a cloud provider take over when the local engine fails",
+  },
+
+  // The CUDA runtime row in the local-model section (shown only when it is missing).
+  cuda: {
+    label: "CUDA runtime",
+    missing: (mb: number) =>
+      `The local engine's graphics card part, downloaded once from NVIDIA (~${mb} MB, under NVIDIA's CUDA license)`,
+    noGpu: "No NVIDIA graphics card found, so the local engine cannot run here. Pick a cloud provider",
   },
 
   shortcuts: {
@@ -254,6 +266,10 @@ const tr: Strings = {
         return { text: "Kaydedildi · dikte bitince Hece'yi yeniden başlat", error: false };
       case "invalid_config":
         return { text: "Kaydedildi ama Hece bu ayarlarla başlayamıyor (invalid_config)", error: true };
+      case "cuda_runtime_missing":
+        return { text: "Kaydedildi · yerel motor için CUDA bileşenini indir (cuda_runtime_missing)", error: true };
+      case "no_nvidia_gpu":
+        return { text: "Kaydedildi · yerel motor NVIDIA ekran kartı ister (no_nvidia_gpu)", error: true };
       default:
         return { text: `Kaydedildi · Hece'ye ulaşılamadı (${answer})`, error: true };
     }
@@ -323,6 +339,13 @@ const tr: Strings = {
     ],
     fallback: "Buluta yedekle",
     fallbackHelp: "Yerel motor çalışmazsa bulut yedeğine geçmeye izin ver",
+  },
+
+  cuda: {
+    label: "CUDA bileşeni",
+    missing: (mb: number) =>
+      `Yerel motorun ekran kartı bileşeni; bir kez NVIDIA'dan indirilir (~${mb} MB, NVIDIA CUDA lisansıyla)`,
+    noGpu: "NVIDIA ekran kartı bulunamadı, yerel motor burada çalışmaz. Bulut sağlayıcı seç",
   },
 
   shortcuts: {

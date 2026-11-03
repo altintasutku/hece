@@ -6,11 +6,11 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use hece::download::Progress;
+use hece::{cuda, download, models, settings, vocabulary};
+use serde_json::{Map, Value};
 use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicBool, Ordering};
-
-use hece::{models, settings, vocabulary};
-use serde_json::{Map, Value};
 use tauri::ipc::Channel;
 
 /// Every config value the window shows or edits.
@@ -46,7 +46,32 @@ struct Snapshot {
     keys: Map<String, Value>,
     devices: Vec<String>,
     models: Vec<ModelInfo>,
+    cuda: CudaInfo,
     daemon: String,
+}
+
+/// The CUDA runtime as the window shows it.
+#[derive(Debug, serde::Serialize)]
+struct CudaInfo {
+    /// Whether an NVIDIA driver is installed.
+    gpu: bool,
+    /// `downloaded`, `system` (toolkit on PATH) or `missing`.
+    state: &'static str,
+    /// Download size in MB.
+    size_mb: u64,
+}
+
+fn cuda_info() -> CudaInfo {
+    let state = match cuda::locate_here() {
+        Ok(Some(cuda::Location::Downloaded(_))) => "downloaded",
+        Ok(Some(cuda::Location::System(_))) => "system",
+        Ok(None) | Err(_) => "missing",
+    };
+    CudaInfo {
+        gpu: cuda::nvidia_gpu(),
+        state,
+        size_mb: cuda::download_size() / 1_000_000,
+    }
 }
 
 fn config() -> Result<PathBuf, String> {
@@ -75,6 +100,7 @@ async fn snapshot() -> Result<Snapshot, String> {
         keys,
         devices: settings::devices(),
         models: models(),
+        cuda: cuda_info(),
         daemon: settings::status().await,
     })
 }
@@ -161,18 +187,19 @@ fn models() -> Vec<ModelInfo> {
 /// Set while a download runs; clearing it cancels the download.
 static DOWNLOADING: AtomicBool = AtomicBool::new(false);
 
-/// Downloads a catalog model (resuming an earlier attempt), reporting the percentage on
-/// `progress`, then makes it the local model. Returns the daemon's reload answer, or an error
-/// code.
-#[tauri::command]
-async fn download_model(id: String, progress: Channel<u64>) -> Result<String, String> {
-    let model = models::find(&id).ok_or("unknown_model")?;
-    let dir = models::models_dir().map_err(|_| "model_disk_error")?;
+/// Claims the single download slot.
+fn start_download() -> Result<(), String> {
     if DOWNLOADING.swap(true, Ordering::SeqCst) {
-        return Err("model_download_running".to_owned());
+        Err("download_running".to_owned())
+    } else {
+        Ok(())
     }
+}
+
+/// Sends each new percentage on `progress`; breaks once the download is cancelled.
+fn report(progress: &Channel<u64>) -> impl FnMut(Progress) -> ControlFlow<()> + use<'_> {
     let mut last = u64::MAX;
-    let result = models::download(&models::client(), models::HUB, model, &dir, |p| {
+    move |p| {
         let percent = p.done * 100 / p.total.max(1);
         if percent != last {
             last = percent;
@@ -183,7 +210,36 @@ async fn download_model(id: String, progress: Channel<u64>) -> Result<String, St
         } else {
             ControlFlow::Break(())
         }
-    })
+    }
+}
+
+/// Downloads the CUDA runtime from NVIDIA, reporting the percentage on `progress`, then asks
+/// the daemon to reload so a local engine can start. Returns the reload answer or an error code.
+#[tauri::command]
+async fn download_cuda(progress: Channel<u64>) -> Result<String, String> {
+    let state = settings::state_dir().map_err(|_| "download_disk_error")?;
+    start_download()?;
+    let result = cuda::download(&download::client(), cuda::REDIST, &state, report(&progress)).await;
+    DOWNLOADING.store(false, Ordering::SeqCst);
+    result.map_err(|e| e.code().to_owned())?;
+    Ok(settings::reload().await)
+}
+
+/// Downloads a catalog model (resuming an earlier attempt), reporting the percentage on
+/// `progress`, then makes it the local model. Returns the daemon's reload answer, or an error
+/// code.
+#[tauri::command]
+async fn download_model(id: String, progress: Channel<u64>) -> Result<String, String> {
+    let model = models::find(&id).ok_or("unknown_model")?;
+    let dir = models::models_dir().map_err(|_| "download_disk_error")?;
+    start_download()?;
+    let result = models::download(
+        &download::client(),
+        models::HUB,
+        model,
+        &dir,
+        report(&progress),
+    )
     .await;
     DOWNLOADING.store(false, Ordering::SeqCst);
     let path = result.map_err(|e| e.code().to_owned())?;
@@ -224,6 +280,7 @@ fn main() -> ExitCode {
             delete_key,
             start_daemon,
             download_model,
+            download_cuda,
             cancel_download,
             vocabulary,
             save_vocabulary,

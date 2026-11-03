@@ -260,6 +260,7 @@ pub async fn execute(args: &BenchArgs) -> anyhow::Result<bool> {
 
     let mut cfg = EngineConfig::default_for(args.model.clone())?;
     cfg.engine_path.clone_from(&args.engine);
+    cfg.dll_dir = crate::cuda::engine_dll_dir()?;
     cfg.beam_size = args.beam_size;
     let client = EngineClient::new(cfg, Arc::new(ProcessSpawner));
     let outcome = measure(

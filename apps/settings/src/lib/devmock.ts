@@ -1,7 +1,8 @@
 // Dev-only stand-in for the Tauri backend, so `bun run dev` renders in a plain browser for
 // screenshots. Loaded only when Vite serves the app outside Tauri; never part of the build.
 // `?daemon=not_running` shows the start banner, `?kind=openai` or `?kind=groq` the cloud rows,
-// `?hotkey=Alt+F13` a changed record shortcut, `?conflict=1` a shortcut another app owns.
+// `?hotkey=Alt+F13` a changed record shortcut, `?conflict=1` a shortcut another app owns,
+// `?cuda=missing` or `?cuda=nogpu` the CUDA runtime row.
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { Snapshot } from "./api";
 
@@ -30,6 +31,12 @@ const snap: Snapshot = {
     { id: "large-v3-turbo", name: "Whisper large-v3 turbo", size_mb: 1620, path: "C:\\models\\turbo", installed: false },
     { id: "large-v3-turkish", name: "Whisper large-v3 Turkish", size_mb: 3090, path: "C:\\models\\tr", installed: true },
   ],
+  // `?cuda=missing` shows the CUDA runtime download row, `?cuda=nogpu` the cloud hint.
+  cuda: {
+    gpu: query.get("cuda") !== "nogpu",
+    state: query.get("cuda") ? "missing" : "system",
+    size_mb: 426,
+  },
   daemon: query.get("daemon") ?? "idle",
 };
 

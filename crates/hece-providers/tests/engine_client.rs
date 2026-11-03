@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use hece_core::Transcript;
 use hece_core::ipc::{PROTOCOL_VERSION, Request, Response, decode_body, encode_frame, frame_len};
 use hece_providers::engine_client::{
-    EngineClient, EngineClientError, EngineConfig, ProcessSpawner, Spawner,
+    EngineClient, EngineClientError, EngineConfig, ProcessSpawner, Spawner, prepend_path,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Child;
@@ -274,6 +274,7 @@ impl Drop for Fixture {
 fn cfg(socket: &Path, base: Duration) -> EngineConfig {
     EngineConfig {
         engine_path: None,
+        dll_dir: None,
         socket: socket.to_path_buf(),
         model_dir: PathBuf::from("/models/m"),
         compute: "float16".to_owned(),
@@ -626,4 +627,20 @@ fn default_config_needs_a_runtime_dir() {
         Path::new("/run/user/1").join("hece").join("engine.sock")
     );
     assert_eq!(c.compute, "int8_float16");
+}
+
+#[test]
+fn dll_dir_goes_first_on_path() {
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let dir = Path::new("rt");
+    let current = std::ffi::OsString::from(format!("a{sep}b"));
+    assert_eq!(
+        prepend_path(dir, Some(&current)).unwrap(),
+        std::ffi::OsString::from(format!("rt{sep}a{sep}b"))
+    );
+    assert_eq!(prepend_path(dir, None).unwrap(), "rt");
+    assert_eq!(
+        prepend_path(Path::new(&format!("x{sep}y")), Some(&current)),
+        None
+    );
 }

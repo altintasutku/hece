@@ -16,8 +16,8 @@ use hece_core::recorder::{Action, Input, Mode, Recorder, RecordingId};
 use hece_core::{Transcript, Vocabulary};
 use hece_platform::overlay::{Outcome, Phase};
 use hece_platform::{
-    CANCEL_SHORTCUT, ControlListener, ControlRequest, Desktop, DesktopEvent, HotkeyEvent, Inserted,
-    MenuAction, Overlay, RECORD_SHORTCUT, Shortcut, TrayState, Window,
+    ControlListener, ControlRequest, Desktop, DesktopEvent, HotkeyEvent, Inserted, MenuAction,
+    Overlay, PlatformError, Shortcut, TrayState, Window,
 };
 use hece_providers::engine_client::EngineClient;
 use hece_providers::{Cleaner, FallbackNotice, ProviderError, ProviderRequest, Providers};
@@ -285,8 +285,10 @@ impl Daemon {
         }
     }
 
-    /// Re-reads the config file and swaps providers, vocabulary, cleanup, mode and history.
-    /// The API keeps its settings until restart. Refused while a dictation is under way.
+    /// Re-reads the config file and swaps providers, vocabulary, cleanup, mode, shortcuts and
+    /// history. The API keeps its settings until restart. Refused while a dictation is under
+    /// way. A shortcut another app owns keeps the previous pair and answers `hotkey_in_use`;
+    /// the rest of the config still applies.
     fn reload(&mut self) -> &'static str {
         if self.recorder.is_recording() || self.pending() > 0 {
             return "busy";
@@ -298,7 +300,21 @@ impl Daemon {
             Ok((cfg, setup)) => {
                 self.configure(&cfg, setup);
                 tracing::info!("config reloaded");
-                "ok"
+                let Ok((record, cancel)) = cfg.recording.hotkeys() else {
+                    return "invalid_config";
+                };
+                match self.desktop.set_hotkeys(record, cancel) {
+                    Ok(()) => "ok",
+                    Err(PlatformError::HotkeyTaken(shortcut)) => {
+                        let code = "hotkey_in_use";
+                        self.fail(&Toast::HotkeyInUse(&shortcut, code).to_string());
+                        code
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "shortcuts could not be changed");
+                        e.code()
+                    }
+                }
             }
             Err(e) => {
                 tracing::warn!(error = %e, "config reload failed");
@@ -907,7 +923,8 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
     }
     let (tx, mut rx) = mpsc::unbounded_channel();
     let desktop_tx = tx.clone();
-    let desktop = Desktop::start(move |e| {
+    let (record, cancel) = cfg.recording.hotkeys().map_err(anyhow::Error::msg)?;
+    let desktop = Desktop::start(record, cancel, move |e| {
         let _ = desktop_tx.send(Msg::Desktop(e));
     })?;
     let control_tx = tx.clone();
@@ -929,7 +946,7 @@ pub async fn execute(cfg: Config, paths: Paths) -> anyhow::Result<()> {
         "press"
     };
     output::status(&format!(
-        "ready: {how} {RECORD_SHORTCUT} to dictate, {CANCEL_SHORTCUT} cancels, Ctrl+C quits"
+        "ready: {how} {record} to dictate, {cancel} cancels, Ctrl+C quits"
     ));
     tracing::info!(mode = how, "daemon ready");
     let update_check = watch_updates(cfg.updates.check, &paths.state_dir, tx.clone());

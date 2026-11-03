@@ -1,6 +1,7 @@
 <script lang="ts">
+  import HotkeyField from "./HotkeyField.svelte";
   import Row from "./Row.svelte";
-  import type { Snapshot, Value } from "./api";
+  import { setValues, type Snapshot, type Value } from "./api";
   import type { Note } from "./save";
   import { t } from "./strings";
 
@@ -18,15 +19,51 @@
     setTimeout(() => (notes[row] = null), 3000);
   }
   const minutes = $derived(Math.round(((snap.values["recording.max_seconds"] as number | null) ?? 600) / 60));
+
+  const HOTKEYS = {
+    record: { field: "recording.hotkey", fallback: "Ctrl+Shift+Space" },
+    cancel: { field: "recording.cancel_hotkey", fallback: "Ctrl+Shift+Backspace" },
+  } as const;
+  const hotkey = (row: keyof typeof HOTKEYS) =>
+    (snap.values[HOTKEYS[row].field] as string | null) ?? HOTKEYS[row].fallback;
+
+  function show(row: string, note: Note) {
+    notes[row] = note;
+    setTimeout(() => (notes[row] = null), 4000);
+  }
+
+  /** Saves a shortcut (`null` = default). If another app owns it, the daemon keeps the old pair
+   *  and this puts the old value back in config.toml so the next start does not fail. */
+  async function setHotkey(row: keyof typeof HOTKEYS, combo: string | null) {
+    const { field, fallback } = HOTKEYS[row];
+    const before = snap.values[field] ?? null;
+    if ((combo ?? fallback) === hotkey(row)) return;
+    try {
+      const answer = await setValues({ [field]: combo });
+      if (answer === "hotkey_in_use") {
+        await setValues({ [field]: before });
+        show(row, { text: s.inUse(combo ?? fallback), error: true });
+        return;
+      }
+      snap.values[field] = combo;
+      show(row, t.savedNote(answer));
+    } catch (e) {
+      show(row, { text: s.hotkeyError(String(e)), error: true });
+    }
+  }
+
+  function pick(row: keyof typeof HOTKEYS, combo: string | null) {
+    if (combo === null) show(row, { text: s.unsupportedKey, error: true });
+    else setHotkey(row, combo);
+  }
 </script>
 
-<Row label={s.record} help={s.recordHelp}>
-  <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd>
-</Row>
-
-<Row label={s.cancel} help={s.cancelHelp}>
-  <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Backspace</kbd>
-</Row>
+{#each [["record", s.record, s.recordHelp], ["cancel", s.cancel, s.cancelHelp]] as const as [row, label, help] (row)}
+  <Row {label} {help} note={notes[row]}>
+    <HotkeyField value={hotkey(row)} action={label} isDefault={hotkey(row) === HOTKEYS[row].fallback}
+      onpick={(combo) => pick(row, combo)} onreset={() => setHotkey(row, null)} />
+  </Row>
+{/each}
 
 <Row label={s.mode} help={s.modeHelp} note={notes.mode}>
   <select value={snap.values["recording.mode"] ?? "hold"}

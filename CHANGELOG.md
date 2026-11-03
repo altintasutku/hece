@@ -13,6 +13,7 @@ The first public release (v0.1.0) is being prepared. Windows only.
 
 - Background voice dictation: hold **Ctrl+Shift+Space** and speak, release to insert the text into
   the focused window; a toggle mode starts and stops on a press. **Ctrl+Shift+Backspace** cancels.
+  Both shortcuts can be changed (`[recording] hotkey` / `cancel_hotkey`, or Settings → Shortcuts).
 - Insertion through the clipboard and a single paste; your previous clipboard is restored, and
   transcripts stay out of Win+V history and the cloud clipboard.
 - Local transcription with Whisper on CTranslate2 (NVIDIA GPU), no Python needed. The model runs

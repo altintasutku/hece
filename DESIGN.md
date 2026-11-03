@@ -59,6 +59,9 @@ checkbox) at least 3:1 (`#6b6e72`).
 - **Focus:** a 2 px `--focus` outline offset by 2 px on every control.
 - **Toggle:** an 18 px checkbox with 5 px radius; checked is violet with a dark check. No pill switches.
 - **Key chip:** keycap — 7 px radius, `#1c1d1f → #0d0d0d` gradient, `#2c2e30` border, 1 px inner top highlight.
+- **Shortcut field:** the shortcut as key chips, then a ghost "Change" pill (and "Reset" when it is not the
+  default). "Change" turns the control into a field with a 1 px `--violet` border that shows the held
+  modifiers as chips and "Esc keeps the current one" in `--mute`; the first non-modifier key saves.
 - **Status text:** "Stored ✓" or "Saved" in `--violet` (600). Errors in `--danger` with their stable code in
   parentheses.
 - **Banner:** `--surface-2` card above the settings card, text in `--ink`, a white pill action on the right.

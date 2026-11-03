@@ -35,6 +35,14 @@ missing_errors_doc = "allow"
 # Panics are forbidden outside tests (unwrap/expect lints), so "# Panics" sections would be empty.
 missing_panics_doc = "allow"
 
+# Full debug info for every dependency made target/debug tens of GB on Windows (PDBs).
+# Our crates keep file:line for backtraces; dependencies carry none.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 strip = true

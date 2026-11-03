@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-03
+
 The first public release (v0.1.0) is being prepared. Windows only.
 
 ### Added
@@ -66,4 +68,5 @@ The first public release (v0.1.0) is being prepared. Windows only.
 - Audio, transcripts and API keys are never written to logs.
 - Network requests to providers have connect, header and upload timeouts.
 
-[Unreleased]: https://github.com/altintasutku/hece/commits/main
+[Unreleased]: https://github.com/altintasutku/hece/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/altintasutku/hece/releases/tag/v0.1.0

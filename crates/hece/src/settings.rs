@@ -9,6 +9,7 @@ use serde_json::Value;
 use toml_edit::{DocumentMut, Item, Table};
 
 use crate::config::{Config, ConfigError};
+use crate::vocabulary;
 
 /// The config file, created from the commented template when missing.
 pub fn config_file() -> anyhow::Result<PathBuf> {
@@ -148,6 +149,69 @@ pub fn delete_key(path: &Path, section: &str) -> Result<(), String> {
 #[must_use]
 pub fn devices() -> Vec<String> {
     hece_audio::input_devices().unwrap_or_default()
+}
+
+/// The vocabulary as the window edits it.
+#[derive(Debug, serde::Serialize)]
+pub struct VocabularyView {
+    /// The file in use.
+    pub path: String,
+    /// Whether `vocabulary_file` names it (otherwise it is the default next to the config).
+    pub custom: bool,
+    /// Its terms in priority order, valid or not.
+    pub entries: Vec<String>,
+    /// How the entries are used.
+    pub check: vocabulary::Check,
+}
+
+fn vocabulary_setup(config: &Path) -> Result<(PathBuf, bool, usize), String> {
+    let doc = read(config).map_err(|e| e.to_string())?;
+    let explicit = get(&doc, "transcription.vocabulary_file")
+        .as_str()
+        .map(PathBuf::from);
+    let budget = get(&doc, "transcription.prompt_tokens")
+        .as_u64()
+        .and_then(|n| usize::try_from(n).ok())
+        .unwrap_or(hece_core::DEFAULT_PROMPT_TOKENS);
+    let path = vocabulary::path(explicit.as_deref(), config);
+    Ok((path, explicit.is_some(), budget))
+}
+
+/// The vocabulary file in use and its terms. Errors are stable codes.
+pub fn vocabulary(config: &Path) -> Result<VocabularyView, String> {
+    let (path, custom, budget) = vocabulary_setup(config)?;
+    let text = vocabulary::read(&path).map_err(|e| e.code().to_owned())?;
+    let entries = vocabulary::entries(&text);
+    Ok(VocabularyView {
+        path: path.display().to_string(),
+        custom,
+        check: vocabulary::check(&entries, budget),
+        entries,
+    })
+}
+
+/// Saves `entries` into the vocabulary file in use, keeping its comments.
+pub fn save_vocabulary(config: &Path, entries: &[String]) -> Result<vocabulary::Check, String> {
+    let (path, _, budget) = vocabulary_setup(config)?;
+    vocabulary::save(&path, entries).map_err(|e| e.code().to_owned())?;
+    Ok(vocabulary::check(entries, budget))
+}
+
+/// The terms of another file, to add to the list.
+pub fn import_vocabulary(file: &Path) -> Result<Vec<String>, String> {
+    std::fs::read_to_string(file)
+        .map(|text| vocabulary::entries(&text))
+        .map_err(|_| "vocabulary_unreadable".to_owned())
+}
+
+/// Makes `file` the vocabulary (`None`: back to the default next to the config).
+pub fn use_vocabulary_file(config: &Path, file: Option<&Path>) -> Result<(), String> {
+    let value = match file {
+        Some(file) if !file.is_file() => return Err("vocabulary_unreadable".to_owned()),
+        Some(file) => Value::from(file.display().to_string()),
+        None => Value::Null,
+    };
+    set(config, &[("transcription.vocabulary_file", value)])
 }
 
 /// Asks the running daemon to re-read the config: `ok`, `busy`, `invalid_config`,

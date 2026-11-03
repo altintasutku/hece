@@ -74,6 +74,22 @@ fn strip_bullet(line: &str) -> &str {
     }
 }
 
+fn render(prefix: &str, terms: &[String]) -> String {
+    format!("{prefix}{}.", terms.join(", "))
+}
+
+/// The term text of a vocabulary file line, bullet stripped; `None` for blank lines, `#`
+/// comments and `!term` exclusions.
+#[must_use]
+pub fn entry(line: &str) -> Option<&str> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let entry = strip_bullet(line);
+    (!entry.starts_with('!')).then_some(entry)
+}
+
 impl Vocabulary {
     /// Parses a vocabulary file: one term per line, `#` comments, `!term` exclusions.
     #[must_use]
@@ -112,17 +128,24 @@ impl Vocabulary {
         count: &dyn Fn(&str) -> usize,
         max_tokens: usize,
     ) -> Option<String> {
+        let n = self.fitting_terms(prefix, count, max_tokens);
+        (n > 0).then(|| render(prefix, &self.terms[..n]))
+    }
+
+    /// How many leading terms fit in a prompt of `max_tokens`.
+    #[must_use]
+    pub fn fitting_terms(
+        &self,
+        prefix: &str,
+        count: &dyn Fn(&str) -> usize,
+        max_tokens: usize,
+    ) -> usize {
         let budget = max_tokens.min(MAX_PROMPT_TOKENS);
-        let mut best: Option<String> = None;
-        for n in 1..=self.terms.len() {
-            let rendered = format!("{prefix}{}.", self.terms[..n].join(", "));
+        (1..=self.terms.len())
             // faster-whisper prepends a space to the initial prompt.
-            if count(&format!(" {rendered}")) > budget {
-                break;
-            }
-            best = Some(rendered);
-        }
-        best
+            .take_while(|&n| count(&format!(" {}", render(prefix, &self.terms[..n]))) <= budget)
+            .last()
+            .unwrap_or(0)
     }
 }
 

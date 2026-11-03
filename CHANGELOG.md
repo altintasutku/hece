@@ -29,6 +29,9 @@ The first public release (v0.1.0) is being prepared. Windows only.
 - Quality layers: personal vocabulary, a hallucination filter, a low-confidence signal, and an
   optional LLM cleanup (OpenAI-compatible or Anthropic) guarded against changed meaning such as
   dropped negations or added lines.
+- Vocabulary editor in Settings: add, edit, remove and reorder terms (earlier wins), see which are
+  skipped or past the length limit, import another file. Stored in `vocabulary.txt` next to
+  `config.toml` unless `vocabulary_file` names one; comments in the file are kept.
 - Long recordings are transcribed in chunks while you are still speaking, so the text is ready
   soon after you stop.
 - Tray icon that shows the state (idle, recording, transcribing) and has the menu.

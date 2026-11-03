@@ -33,9 +33,35 @@ const snap: Snapshot = {
   daemon: query.get("daemon") ?? "idle",
 };
 
+// Synthetic vocabulary. `?vocab=empty` shows the empty list, `?vocab=long` the length limit.
+const words = ["Kubernetes", "PostgreSQL", "Tauri", "Svelte", "Alpha Bravo", "postgresql", "a, b", "CTranslate2"];
+let entries = query.get("vocab") === "empty" ? [] : query.get("vocab") === "long" ? [...words, "Grafana", "Zigbee"] : words;
+const fitLimit = query.get("vocab") === "long" ? 6 : Infinity;
+
+/** A rough stand-in for hece::vocabulary::check. */
+function check(list: string[]) {
+  const seen = new Set<string>();
+  const statuses = list.map((raw) => {
+    const term = raw.trim();
+    if (!term || term.length > 40 || term.includes(",") || /^[#!]/.test(term)) return "invalid";
+    if (seen.has(term.toLowerCase())) return "duplicate";
+    seen.add(term.toLowerCase());
+    return "ok";
+  });
+  return { statuses, terms: seen.size, fit: Math.min(seen.size, fitLimit) };
+}
+
 let conflicts = query.get("conflict") === "1";
-mockIPC((cmd) => {
+mockIPC((cmd, args) => {
   if (cmd === "snapshot") return structuredClone(snap);
+  if (cmd === "vocabulary") {
+    return { path: "C:\\Users\\you\\AppData\\Roaming\\hece\\vocabulary.txt", custom: false, entries, check: check(entries) };
+  }
+  if (cmd === "save_vocabulary") {
+    entries = (args as { entries: string[] }).entries;
+    return [check(entries), "ok"];
+  }
+  if (cmd === "import_vocabulary") return ["Grafana", "Zigbee"];
   if (cmd === "set_values" && conflicts) {
     // The first save is refused, the restore that follows succeeds.
     conflicts = false;

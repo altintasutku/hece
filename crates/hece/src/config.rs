@@ -22,7 +22,7 @@ max_seconds = 600          # at most 660
 
 [transcription]
 # language = "en"          # pin the spoken language; default: auto-detect
-# vocabulary_file = 'C:\Users\you\hece-vocabulary.txt'  # one term per line, # comments
+# vocabulary_file = 'C:\Users\you\hece-vocabulary.txt'  # default: vocabulary.txt next to this file (Settings edits it)
 prompt_tokens = 200
 allow_cloud_fallback = false   # a local provider may fall back to a cloud one only if true
 

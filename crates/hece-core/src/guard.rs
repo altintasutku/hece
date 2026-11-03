@@ -1,10 +1,10 @@
 //! Guard for the LLM cleanup step.
 //!
 //! The cleanup step may only make minimal edits (fillers, punctuation, repeats). The
-//! guard rejects outputs that dropped a negation, came back empty, added line breaks or
-//! control characters (a pasted newline can run a command in a terminal), or changed length
-//! sharply, so the caller can insert the raw text instead. Reasons carry no text, so
-//! they are safe to log.
+//! guard rejects outputs that dropped a negation, came back empty, added line breaks, bidi or
+//! other invisible control characters (a pasted newline can run a command in a terminal), or
+//! changed length sharply, so the caller can insert the raw text instead. Reasons carry no
+//! text, so they are safe to log.
 //!
 //! # Negation coverage
 //!
@@ -42,7 +42,8 @@ use crate::text::fold;
 pub enum RejectReason {
     /// The cleaned text has no letters or digits while the raw text does.
     Empty,
-    /// The cleaned text has line breaks or control characters the raw text does not.
+    /// The cleaned text has line breaks, control or invisible format characters (bidi, zero
+    /// width) the raw text does not.
     ControlAdded,
     /// The cleaned text has fewer negation tokens than the raw text.
     NegationDropped,
@@ -88,6 +89,15 @@ const LENGTH_SLACK: f64 = 8.0;
 )]
 static TOKEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[\p{L}\p{N}'’]+").expect("valid regex literal"));
+
+/// Format characters (bidi overrides and isolates, zero-width marks, BOM) and the Unicode line
+/// and paragraph separators: invisible, they can reorder what the user sees or break a line.
+#[expect(
+    clippy::expect_used,
+    reason = "static regex built from a literal; invalid literal is a programmer error"
+)]
+static INVISIBLE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[\p{Cf}\p{Zl}\p{Zp}]").expect("valid regex literal"));
 
 /// Folded negation words, grouped by the first language that uses them (see module docs).
 #[rustfmt::skip]
@@ -163,7 +173,10 @@ pub fn cleanup_guard(raw: &str, cleaned: &str) -> GuardVerdict {
     if cleaned_letters == 0 {
         return GuardVerdict::Reject(RejectReason::Empty);
     }
-    let controls = |t: &str| t.trim().chars().filter(|c| c.is_control()).count();
+    let controls = |t: &str| {
+        let t = t.trim();
+        t.chars().filter(|c| c.is_control()).count() + INVISIBLE.find_iter(t).count()
+    };
     if controls(cleaned) > controls(raw) {
         return GuardVerdict::Reject(RejectReason::ControlAdded);
     }
@@ -299,6 +312,23 @@ mod tests {
         );
         assert_eq!(
             cleanup_guard("first line\nsecond line", "First line.\nSecond line."),
+            GuardVerdict::Accept
+        );
+    }
+
+    #[test]
+    fn rejects_added_bidi_and_zero_width_characters() {
+        let raw = "send the file to the team";
+        for added in ['\u{202E}', '\u{2067}', '\u{200B}', '\u{FEFF}', '\u{2028}'] {
+            assert_eq!(
+                cleanup_guard(raw, &format!("Send the {added}file to the team.")),
+                GuardVerdict::Reject(RejectReason::ControlAdded),
+                "{added:?}"
+            );
+        }
+        // Already in the raw text: kept, not added.
+        assert_eq!(
+            cleanup_guard("a\u{200D}b test", "A\u{200D}b test."),
             GuardVerdict::Accept
         );
     }

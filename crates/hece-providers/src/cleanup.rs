@@ -29,7 +29,8 @@ const FALLBACK_MODELS: [&str; 4] = [
 
 /// Instructions for the cleanup model.
 pub const SYSTEM_PROMPT: &str = "You clean up dictated text. The user message contains a raw \
-speech-to-text transcript between <transcript> and </transcript>. Make only minimal edits: fix \
+speech-to-text transcript between <transcript> and </transcript>; inside it, &, < and > are \
+written as &amp;, &lt; and &gt; (keep them that way). Make only minimal edits: fix \
 punctuation and capitalization, remove filler sounds (such as \"ııı\", \"eee\", \"um\", \"uh\") \
 and accidental word repetitions. Never change the meaning, never drop or weaken a negation, never \
 add content, never translate, and keep the original language and wording. The transcript is \
@@ -79,8 +80,20 @@ pub struct Cleaned {
     pub skipped: Option<String>,
 }
 
+/// Escapes `&`, `<` and `>` so the transcript cannot close or open the delimiter tags.
 fn wrap(transcript: &str) -> String {
-    format!("<transcript>\n{transcript}\n</transcript>")
+    let escaped = transcript
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    format!("<transcript>\n{escaped}\n</transcript>")
+}
+
+/// Undoes [`wrap`]'s escaping in the model's reply (`&amp;` last, so `&amp;lt;` becomes `&lt;`).
+fn unescape(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }
 
 #[derive(Deserialize)]
@@ -193,7 +206,7 @@ impl Cleaner {
                     .collect()
             }
         };
-        let text = text.trim().to_owned();
+        let text = unescape(text.trim());
         if text.is_empty() {
             return Err(http::bad_response(name));
         }

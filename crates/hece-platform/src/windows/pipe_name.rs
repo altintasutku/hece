@@ -42,6 +42,10 @@ fn key(dir: &Path) -> io::Result<String> {
     std::fs::create_dir_all(dir)?;
     let tmp = dir.join(format!("{KEY_FILE}.{}.tmp", std::process::id()));
     std::fs::File::create(&tmp)?.write_all(key.as_bytes())?;
+    // The folder is already private; this also drops inherited entries (best effort).
+    if let Err(e) = super::restrict_to_user(&tmp) {
+        tracing::warn!(code = e.code(), "pipe key file ACL not restricted");
+    }
     let placed = if existing {
         std::fs::rename(&tmp, &path)
     } else {

@@ -41,8 +41,9 @@
     Delete "$SMPROGRAMS\Hece Settings.lnk"
     Delete "$DESKTOP\Hece.lnk"
     ${If} $DeleteAppDataCheckboxState = 1
-      ; API keys live in the Credential Manager as "<provider>.hece".
-      nsExec::Exec `powershell -NoProfile -ExecutionPolicy Bypass -Command "cmdkey /list | Select-String 'target=(\S+\.hece)$$' | ForEach-Object { cmdkey /delete:$$($$_.Matches[0].Groups[1].Value) }"`
+      ; API keys live in the Credential Manager as "<provider>.hece". PowerShell by full path: a
+      ; bare name is searched in the uninstaller's folder and the current directory first.
+      nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "cmdkey /list | Select-String 'target=(\S+\.hece)$$' | ForEach-Object { cmdkey /delete:$$($$_.Matches[0].Groups[1].Value) }"`
       Pop $R8
     ${EndIf}
   ${EndIf}

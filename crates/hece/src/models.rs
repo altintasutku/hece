@@ -322,6 +322,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn oversized_answer_stops_at_the_pinned_size() {
+        let server = MockServer::start().await;
+        serve(&server, "model.bin", &[0_u8; 4096]).await;
+        let m = model(vec![file("model.bin", b"0123456789")]);
+        let dir = temp_dir();
+        let err = download(&client(), &server.uri(), &m, &dir, keep_going)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), "download_checksum_mismatch");
+        assert!(!dir.join("test-model.partial").join("model.bin").exists());
+    }
+
+    #[tokio::test]
     async fn http_error_has_a_code() {
         let server = MockServer::start().await;
         let m = model(vec![file("model.bin", b"x")]);

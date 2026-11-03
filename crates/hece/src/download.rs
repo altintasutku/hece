@@ -82,10 +82,12 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// The HTTP client for downloads: a stall timeout but no overall one (files are large).
+/// The HTTP client for downloads: a stall timeout but no overall one (files are large). HTTPS
+/// only, also for redirects (the hub sends files to its CDN); unit tests serve plain HTTP.
 #[must_use]
 pub fn client() -> reqwest::Client {
     reqwest::Client::builder()
+        .https_only(!cfg!(test))
         .connect_timeout(STALL)
         .read_timeout(STALL)
         .build()
@@ -165,8 +167,17 @@ async fn fetch(
         return Err(DownloadError::Cancelled);
     }
     while let Some(chunk) = response.chunk().await.map_err(|_| DownloadError::Network)? {
-        out.write_all(&chunk).map_err(|e| disk(&e))?;
         have += chunk.len() as u64;
+        // More than the pinned size can never match the checksum; stop before it fills the disk.
+        if have > file.size {
+            drop(out);
+            let _ = std::fs::remove_file(path);
+            let name = path
+                .file_name()
+                .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            return Err(DownloadError::Checksum(name));
+        }
+        out.write_all(&chunk).map_err(|e| disk(&e))?;
         if have - reported >= REPORT_EVERY || have == file.size {
             reported = have;
             if progress(have).is_break() {

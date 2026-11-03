@@ -1,6 +1,7 @@
 //! Insertion: clipboard + one Ctrl+V into the window that had focus when recording stopped.
 //! Transcripts are kept out of Win+V history and the cloud clipboard, and the user's previous
-//! clipboard text is put back afterwards.
+//! clipboard text is put back afterwards. Control characters are replaced first
+//! ([`hece_core::paste_safe`]), so a transcript cannot press Enter in a terminal.
 #![allow(unsafe_code, reason = "Win32 input and window FFI wrapper")]
 
 use std::time::{Duration, Instant};
@@ -103,7 +104,7 @@ fn send_paste() -> Result<(), PlatformError> {
 /// Puts `text` on the clipboard (kept out of history and the cloud clipboard) without pasting.
 pub fn copy(text: &str) -> Result<(), PlatformError> {
     let mut clipboard = Clipboard::new().map_err(|_| PlatformError::Clipboard)?;
-    set_private(&mut clipboard, text)
+    set_private(&mut clipboard, &hece_core::paste_safe(text))
 }
 
 /// Pastes `text` into `target` (or wherever focus is when `target` is `None`). Blocks for up
@@ -114,7 +115,7 @@ pub fn copy(text: &str) -> Result<(), PlatformError> {
 pub fn insert(text: &str, target: Option<Window>) -> Result<Inserted, PlatformError> {
     let mut clipboard = Clipboard::new().map_err(|_| PlatformError::Clipboard)?;
     let previous = clipboard.get_text().ok();
-    set_private(&mut clipboard, text)?;
+    set_private(&mut clipboard, &hece_core::paste_safe(text))?;
     wait_for_modifiers_released();
     if target.is_some() && focused_window() != target {
         return Ok(Inserted::FocusChanged);

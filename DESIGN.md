@@ -6,8 +6,8 @@ app by decision of 2026-11-03 to match the site (#59), so the app people open af
 page they downloaded it from. Every screen follows this file, and new decisions are recorded here.
 
 Reference: Raycast (dark canvas, surface ladder instead of shadows, white pill CTA, keycaps). Character comes from
-the product: the recording orb is the hero, so the violet accent is the orb's colour, and *hece* means syllable,
-so section titles keep the syllable dot.
+the product: the violet accent is the recording orb's colour, the hero shows a voice turning into a text cursor,
+and *hece* means syllable, so section titles keep the syllable dot.
 
 History: the settings app first followed **Dizgi** (chosen 2026-11-02, PR #37): a light, typeset page with IBM
 Plex Sans, Instrument Serif titles, square controls and hairlines only. Gece replaced it; the syllable-dot title
@@ -43,7 +43,7 @@ checkbox) at least 3:1 (`#6b6e72`).
 - 4 px grid. App: content padding 30 px top, 32 px sides; rows 14 px top and bottom; 22 px between a section's
   lede and its card. Sidebar 180 px on `--surface` with a hairline on its right. Content column at most 720 px.
 - Cards: 12 px radius, 1 px `--hairline`, `--card` fill. Fields 8 px radius. Buttons are pills.
-- No shadows on chrome. Keycaps are the only gradient besides the orb and the site's hero glow.
+- No shadows on chrome. Keycaps are the only gradient (the recording overlay is the exception, see below).
 
 ## Components
 
@@ -116,12 +116,20 @@ With Windows animation effects off it stops rotating and deforming; colour still
 
 ## Website
 
-- **Orb:** the overlay look (A3) in CSS: rainbow ring blurred behind a violet core with two syllable waves. It
-  spins slowly.
+- **Images:** real generated images (Higgsfield / Gemini), never shapes drawn in CSS or SVG. Sources and prompts
+  live in #92. WebP in `site/img`, longest side 1920 px, `width`/`height` set; below the fold `loading="lazy"`.
+  - Hero: a voice wave in the site's dot colours (coral, amber, green, blue, violet) that narrows into one text
+    cursor. A 5 s silent loop (`hero-wave.mp4`, H.264, faststart, under 1 MB) over its first frame as poster;
+    it plays only without `prefers-reduced-motion`. Full bleed (`.bleed`), top and bottom fade into `--canvas`.
+  - Local or cloud: a candid night photo of someone talking to their screen, hands off the keyboard. Card
+    radius and hairline border.
+  - Final call to action: a keyboard at rest under the buttons, full bleed like the hero.
+  - People are never shown typing. Text on screens is never shown (generated text is unreadable).
 - **Copy:** facts must match `.agents/product-marketing.md`. No invented numbers, testimonials or logos. Examples
   are synthetic and labelled as illustrative.
 
 ## Avoid
 
-Light sections or a light theme, a second primary colour, shadows on chrome, pastel tints, Inter/Geist, stock
-photos, emoji in the UI, and gradients other than the keycaps, the orb and the site's hero glow.
+Light sections or a light theme, a second primary colour, shadows on chrome, pastel tints, Inter/Geist, posed
+stock-looking photos, emoji in the UI, CSS or SVG drawings standing in for pictures, and gradients other than the
+keycaps.

@@ -75,7 +75,10 @@
 <main id="main">
   <section class="hero">
     <div class="wrap">
-      <div class="orb" aria-hidden="true"><div class="ring"></div><div class="core"></div><div class="wave"></div><div class="wave"></div></div>
+      <video class="bleed hero-art" src="img/hero-wave.mp4" poster="img/hero-wave.webp" width="1600" height="892"
+             muted loop playsinline preload="none" aria-hidden="true"></video>
+      <!-- The loop plays only when motion is welcome; otherwise the poster (its first frame) stays. -->
+      <script>if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.querySelector(".hero-art").play().catch(() => {});</script>
       <h1>Talk. Hece types.</h1>
       <p class="lede">Hece is a free, open-source dictation app for Windows. Hold a key and speak; your words appear in whatever app you are using, transcribed on your own GPU.</p>
       <div class="cta">
@@ -116,7 +119,6 @@
           <li><b>Let go</b><span>The text lands where your cursor is, with one paste. <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Backspace</kbd> cancels.</span></li>
         </ol>
         <div class="scene" aria-label="Example: a dictated reply appears in a chat window">
-          <div class="orb" aria-hidden="true"><div class="ring"></div><div class="core"></div><div class="wave"></div><div class="wave"></div></div>
           <div class="window">
             <div class="bar"><span># release-planning</span></div>
             <div class="msgs">
@@ -157,6 +159,8 @@
     <div class="wrap">
       <p class="eyebrow">Local or cloud</p>
       <h2>Your voice, your choice of engine.</h2>
+      <img class="photo" src="img/desk.webp" width="1920" height="1071" loading="lazy"
+           alt="A woman at her desk at night holds a mug and talks to her monitor; her keyboard is untouched.">
       <div class="modes">
         <div class="mode">
           <h3>Local</h3>
@@ -208,13 +212,13 @@
 
   <section class="final">
     <div class="wrap">
-      <div class="orb" aria-hidden="true"><div class="ring"></div><div class="core"></div><div class="wave"></div><div class="wave"></div></div>
       <h2>Give your keyboard a break.</h2>
       <div class="cta">
         <a class="btn btn-primary" href="https://github.com/altintasutku/hece/releases/latest">Download for Windows</a>
         <a class="btn btn-ghost" href="https://github.com/altintasutku/hece">View the source</a>
       </div>
       <p class="req">Free and open source. No account.</p>
+      <img class="bleed final-art" src="img/keyboard.webp" width="1920" height="1071" alt="" loading="lazy">
     </div>
   </section>
 </main>

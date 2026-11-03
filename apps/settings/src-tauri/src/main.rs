@@ -6,12 +6,11 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use hece::download::Progress;
+use hece::{cuda, download, models, settings, vocabulary};
+use serde_json::{Map, Value};
 use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicBool, Ordering};
-
-use hece::download::Progress;
-use hece::{cuda, download, models, settings};
-use serde_json::{Map, Value};
 use tauri::ipc::Channel;
 
 /// Every config value the window shows or edits.
@@ -22,12 +21,17 @@ const KEYS: &[&str] = &[
     "provider.base_url",
     "provider.model",
     "provider.key",
+    "provider.segments",
     "transcription.language",
     "transcription.allow_cloud_fallback",
     "recording.mode",
     "recording.device",
     "recording.max_seconds",
+    "recording.hotkey",
+    "recording.cancel_hotkey",
     "ui.overlay",
+    "feedback.sounds",
+    "updates.check",
 ];
 
 /// Sections whose provider may have a key in the keyring.
@@ -112,6 +116,31 @@ async fn set_values(changes: Map<String, Value>) -> Result<String, String> {
         .map(|(k, v)| (k.as_str(), v.clone()))
         .collect();
     settings::set(&config()?, &changes)?;
+    Ok(settings::reload().await)
+}
+
+#[tauri::command]
+fn vocabulary() -> Result<settings::VocabularyView, String> {
+    settings::vocabulary(&config()?)
+}
+
+/// Saves the vocabulary list; returns how it is used and the daemon's reload answer.
+#[tauri::command]
+async fn save_vocabulary(entries: Vec<String>) -> Result<(vocabulary::Check, String), String> {
+    let check = settings::save_vocabulary(&config()?, &entries)?;
+    Ok((check, settings::reload().await))
+}
+
+#[tauri::command]
+async fn import_vocabulary(path: String) -> Result<Vec<String>, String> {
+    settings::import_vocabulary(std::path::Path::new(path.trim()))
+}
+
+/// Switches to another vocabulary file (`null`: the default); returns the reload answer.
+#[tauri::command]
+async fn use_vocabulary_file(path: Option<String>) -> Result<String, String> {
+    let path = path.map(|p| PathBuf::from(p.trim()));
+    settings::use_vocabulary_file(&config()?, path.as_deref())?;
     Ok(settings::reload().await)
 }
 
@@ -252,7 +281,11 @@ fn main() -> ExitCode {
             start_daemon,
             download_model,
             download_cuda,
-            cancel_download
+            cancel_download,
+            vocabulary,
+            save_vocabulary,
+            import_vocabulary,
+            use_vocabulary_file
         ])
         .run(tauri::generate_context!());
     if run.is_ok() {

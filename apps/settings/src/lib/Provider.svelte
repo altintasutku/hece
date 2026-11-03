@@ -3,7 +3,7 @@
   import Row from "./Row.svelte";
   import { cancelDownload, downloadCuda, downloadModel, type Snapshot, type Value } from "./api";
   import type { Note } from "./save";
-  import { cudaRuntime, savedNote } from "./strings";
+  import { t } from "./strings";
 
   interface Props {
     snap: Snapshot;
@@ -21,16 +21,67 @@
     setTimeout(() => (notes[row] = null), 3000);
   }
 
-  // OpenAI-compatible needs a URL and model; start from OpenAI's own so the switch is valid.
-  function kindChanges(kind: string): Record<string, Value> {
-    if (kind !== "openai") return { "provider.kind": kind };
-    return {
-      "provider.kind": kind,
-      "provider.base_url": text("provider.base_url") || "https://api.openai.com/v1",
-      "provider.model": text("provider.model") || "whisper-1",
-    };
+  // Engine choices. Cloud presets fill URL, model and name so nobody types a URL; every choice
+  // also clears the fields it does not use (a Groq base_url left behind would send Deepgram
+  // requests to Groq). `segments` (verbose_json) only for Whisper models, which support it.
+  type Choice = "local" | "groq" | "openai" | "deepgram" | "custom";
+  const GROQ_URL = "https://api.groq.com/openai/v1";
+  const OPENAI_URL = "https://api.openai.com/v1";
+  const GROQ_MODELS = ["whisper-large-v3", "whisper-large-v3-turbo"];
+  const unused = {
+    "provider.name": null,
+    "provider.base_url": null,
+    "provider.model": null,
+    "provider.segments": null,
+  };
+  const presets: Record<Exclude<Choice, "custom">, Record<string, Value>> = {
+    local: { ...unused, "provider.kind": "local" },
+    groq: {
+      "provider.kind": "openai",
+      "provider.name": "groq",
+      "provider.base_url": GROQ_URL,
+      "provider.model": GROQ_MODELS[0],
+      "provider.segments": true,
+    },
+    openai: {
+      "provider.kind": "openai",
+      "provider.name": null,
+      "provider.base_url": OPENAI_URL,
+      "provider.model": "whisper-1",
+      "provider.segments": true,
+    },
+    deepgram: { ...unused, "provider.kind": "deepgram" },
+  };
+
+  const choice: Choice = $derived.by(() => {
+    const kind = v("provider.kind") ?? "local";
+    if (kind === "local" || kind === "deepgram") return kind;
+    const url = text("provider.base_url").replace(/\/+$/, "");
+    if (url === GROQ_URL) return "groq";
+    if (url === OPENAI_URL) return "openai";
+    return "custom";
+  });
+
+  async function choose(next: string) {
+    const changes =
+      next === "custom"
+        ? {
+            "provider.kind": "openai",
+            "provider.base_url": "http://127.0.0.1:8000/v1",
+            "provider.model": text("provider.model") || "whisper-1",
+            "provider.segments": null,
+          }
+        : presets[next as keyof typeof presets];
+    await change("kind", changes);
+    // The keyring entry is named after the provider, so the stored-key state may differ.
+    refresh();
   }
-  const languages: [string, string][] = [["tr", "Türkçe"], ["en", "İngilizce"], ["", "Otomatik algıla"]];
+
+  function modelChanges(model: string): Record<string, Value> {
+    const changes: Record<string, Value> = { "provider.model": model };
+    if (choice !== "custom") changes["provider.segments"] = model.startsWith("whisper") || null;
+    return changes;
+  }
 
   // The model in use: the catalog entry whose folder model_dir points at, else the first
   // downloaded one (what the daemon picks when model_dir is empty), else a custom folder.
@@ -46,12 +97,12 @@
   let failure: string | null = $state(null);
   const modelHelp = $derived(
     percent !== null
-      ? `İndiriliyor… %${percent}`
+      ? t.provider.downloading(percent)
       : failure
-        ? `İndirilemedi (${failure}); tekrar denersen kaldığı yerden devam eder`
+        ? t.provider.downloadFailed(failure)
         : selected && !selected.installed
-          ? `Bir kez indirilir (${(selected.size_mb / 1000).toFixed(1)} GB), sonra internetsiz çalışır`
-          : "Konuşmayı bu bilgisayarda, ekran kartında yazıya çevirir",
+          ? t.provider.downloadOnce((selected.size_mb / 1000).toFixed(1))
+          : t.provider.localHelp,
   );
 
   async function pick(id: string) {
@@ -82,19 +133,19 @@
   const busy = $derived(percent !== null || cudaPercent !== null);
   const cudaHelp = $derived(
     !snap.cuda.gpu
-      ? cudaRuntime.noGpu
+      ? t.cuda.noGpu
       : cudaPercent !== null
-        ? cudaRuntime.downloading(cudaPercent)
+        ? t.provider.downloading(cudaPercent)
         : cudaFailure
-          ? cudaRuntime.failed(cudaFailure)
-          : cudaRuntime.missing(snap.cuda.size_mb),
+          ? t.provider.downloadFailed(cudaFailure)
+          : t.cuda.missing(snap.cuda.size_mb),
   );
 
   async function downloadRuntime() {
     cudaFailure = null;
     cudaPercent = 0;
     try {
-      notes.cuda = savedNote(await downloadCuda((p) => (cudaPercent = p)));
+      notes.cuda = t.savedNote(await downloadCuda((p) => (cudaPercent = p)));
       setTimeout(() => (notes.cuda = null), 3000);
       refresh();
     } catch (e) {
@@ -106,71 +157,89 @@
   }
 </script>
 
-<Row label="Motor" help="Yerel: Türkçe Whisper, ekran kartında. Bulut: anahtar gerekir." note={notes.kind}>
-  <select value={v("provider.kind") ?? "local"} onchange={(e) => change("kind", kindChanges(e.currentTarget.value))}>
-    <option value="local">Yerel (GPU)</option>
-    <option value="openai">OpenAI uyumlu</option>
-    <option value="deepgram">Deepgram</option>
+<Row label={t.provider.engine} help={t.provider.engineHelp} note={notes.kind}>
+  <select value={choice} onchange={(e) => choose(e.currentTarget.value)}>
+    <option value="local">{t.provider.local}</option>
+    <option value="groq">{t.provider.groq}</option>
+    <option value="openai">{t.provider.openai}</option>
+    <option value="deepgram">{t.provider.deepgram}</option>
+    <option value="custom">{t.provider.custom}</option>
   </select>
 </Row>
 
 {#if (v("provider.kind") ?? "local") === "local"}
-  <Row label="Model" help={modelHelp} note={notes.model}>
+  <Row label={t.provider.model} help={modelHelp} note={notes.model}>
     <select value={chosen} disabled={percent !== null}
       onchange={(e) => pick(e.currentTarget.value)}>
       {#each snap.models as m (m.id)}
         <option value={m.id}>{m.name}{m.installed ? "" : ` · ${(m.size_mb / 1000).toFixed(1)} GB`}</option>
       {/each}
       {#if chosen === "custom"}
-        <option value="custom">Kendi klasörün</option>
+        <option value="custom">{t.provider.customFolder}</option>
       {/if}
     </select>
     {#if percent !== null}
-      <button onclick={cancelDownload}>Vazgeç</button>
+      <button onclick={cancelDownload}>{t.provider.cancel}</button>
     {:else if selected && !selected.installed}
-      <button disabled={busy} onclick={() => download(selected.id)}>İndir</button>
+      <button class="primary" disabled={busy} onclick={() => download(selected.id)}>{t.provider.download}</button>
     {/if}
   </Row>
   {#if snap.cuda.state === "missing"}
-    <Row label={cudaRuntime.label} help={cudaHelp} note={notes.cuda}>
+    <Row label={t.cuda.label} help={cudaHelp} note={notes.cuda}>
       {#if cudaPercent !== null}
-        <button onclick={cancelDownload}>{cudaRuntime.cancel}</button>
+        <button onclick={cancelDownload}>{t.provider.cancel}</button>
       {:else if snap.cuda.gpu}
-        <button disabled={busy} onclick={downloadRuntime}>{cudaRuntime.button}</button>
+        <button class="primary" disabled={busy} onclick={downloadRuntime}>{t.provider.download}</button>
       {/if}
     </Row>
   {/if}
 {/if}
 
-{#if v("provider.kind") === "openai"}
-  <Row label="Adres" help="OpenAI, Groq ya da yerel bir sunucu (…/v1)" note={notes.url}>
-    <input class="path" value={text("provider.base_url")} spellcheck="false"
-      onchange={(e) => change("url", { "provider.base_url": e.currentTarget.value.trim() })} />
+{#if choice === "groq"}
+  <Row label={t.provider.model} help={t.provider.groqModelHelp} note={notes.modelName}>
+    <select value={text("provider.model")} onchange={(e) => change("modelName", modelChanges(e.currentTarget.value))}>
+      {#each GROQ_MODELS as m (m)}
+        <option value={m}>{m}</option>
+      {/each}
+      {#if !GROQ_MODELS.includes(text("provider.model"))}
+        <option value={text("provider.model")}>{text("provider.model")}</option>
+      {/if}
+    </select>
   </Row>
-  <Row label="Model" help="Sağlayıcının model adı, örneğin whisper-large-v3" note={notes.modelName}>
+{:else if choice === "openai" || choice === "custom"}
+  {#if choice === "custom"}
+    <Row label={t.provider.url} help={t.provider.urlHelp} note={notes.url}>
+      <input class="path" value={text("provider.base_url")} spellcheck="false"
+        onchange={(e) => change("url", { "provider.base_url": e.currentTarget.value.trim() })} />
+    </Row>
+  {/if}
+  <Row label={t.provider.model} help={t.provider.modelNameHelp} note={notes.modelName}>
     <input value={text("provider.model")} spellcheck="false"
-      onchange={(e) => change("modelName", { "provider.model": e.currentTarget.value.trim() })} />
+      onchange={(e) => change("modelName", modelChanges(e.currentTarget.value.trim()))} />
   </Row>
-  <Row label="Ad" help="Mesajlarda ve anahtar kaydında görünür" note={notes.name}>
-    <input value={text("provider.name")} placeholder="openai" spellcheck="false"
-      onchange={(e) => change("name", { "provider.name": e.currentTarget.value.trim() || null })} />
-  </Row>
+  {#if choice === "custom"}
+    <Row label={t.provider.name} help={t.provider.nameHelp} note={notes.name}>
+      <input value={text("provider.name")} placeholder="openai" spellcheck="false"
+        onchange={async (e) => { await change("name", { "provider.name": e.currentTarget.value.trim() || null }); refresh(); }} />
+    </Row>
+  {/if}
 {/if}
 
-{#if v("provider.kind") !== "local" && v("provider.kind") !== null}
-  <KeyRow section="provider" stored={snap.keys.provider ?? false} onchange={refresh} />
+{#if choice !== "local"}
+  <KeyRow section="provider" stored={snap.keys.provider ?? false} onchange={refresh}
+    help={t.provider.keyHelp[choice]} />
 {/if}
 
-<Row label="Dil" help="Konuştuğun dil; otomatik algılama daha yavaş ve hatalı olabilir" note={notes.lang}>
+<Row label={t.provider.language} help={t.provider.languageHelp} note={notes.lang}>
   <select value={text("transcription.language")}
     onchange={(e) => change("lang", { "transcription.language": e.currentTarget.value || null })}>
-    {#each languages as [code, name] (code)}
+    {#each t.provider.languages as [code, name] (code)}
       <option value={code}>{name}</option>
     {/each}
   </select>
 </Row>
 
-<Row label="Buluta yedekle" help="Yerel motor çalışmazsa bulut yedeğine geçmeye izin ver" note={notes.fallback}>
+<Row label={t.provider.fallback} help={t.provider.fallbackHelp} note={notes.fallback}>
   <input type="checkbox" checked={v("transcription.allow_cloud_fallback") === true}
     onchange={(e) => change("fallback", { "transcription.allow_cloud_fallback": e.currentTarget.checked })} />
 </Row>

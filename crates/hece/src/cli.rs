@@ -31,7 +31,7 @@ pub enum Command {
     Devices,
     /// Record once from the microphone (Enter stops), transcribe and print the text.
     Dictate(DictateArgs),
-    /// Run the dictation daemon (Ctrl+Shift+Space records, Ctrl+Shift+Backspace cancels).
+    /// Run the dictation daemon (default: Ctrl+Shift+Space records, Ctrl+Shift+Backspace cancels).
     ///
     /// Settings come from the config file; a commented template is written on first run.
     /// `hecew.exe` (no arguments) runs the same daemon without a console window.

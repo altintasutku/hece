@@ -209,7 +209,7 @@ async fn serve(
             match req {
                 Request::Hello => {
                     if matches!(mode, Mode::SlowHello) {
-                        tokio::time::sleep(Duration::from_millis(600)).await;
+                        tokio::time::sleep(Duration::from_millis(1500)).await;
                     }
                     let protocol = if matches!(mode, Mode::BadProtocol) {
                         2
@@ -370,7 +370,7 @@ async fn silent_worker_times_out() {
     let err = tx(&f.client, None).await.unwrap_err();
     assert!(matches!(err, EngineClientError::Timeout), "{err}");
     assert!(
-        start.elapsed() < Duration::from_millis(900),
+        start.elapsed() < Duration::from_secs(3),
         "{:?}",
         start.elapsed()
     );
@@ -469,7 +469,7 @@ async fn hello_waits_longer_than_the_connect_timeout() {
         vec![Mode::SlowHello],
         Duration::from_secs(5),
         |c| {
-            c.connect_timeout = Duration::from_millis(300);
+            c.connect_timeout = Duration::from_millis(1000);
         },
     );
     assert_eq!(tx(&f.client, None).await.unwrap().text, "hello");

@@ -6,7 +6,9 @@ Parts of this crate are ports of, or link, the following MIT-licensed projects.
   (`src/mel.rs`) and the decoding, transcription and VAD pipeline logic in the other modules.
 - Silero VAD, Copyright (c) 2020-present Silero Team. The speech-probability model usage and
   window/context handling in the VAD module derive from it.
-- ONNX Runtime, Copyright (c) Microsoft Corporation. Statically linked through the `ort` crate.
+- ONNX Runtime, Copyright (c) Microsoft Corporation. Loaded at run time through the `ort` crate
+  (`load-dynamic`); the Windows installer ships Microsoft's `onnxruntime.dll` with its LICENSE and
+  ThirdPartyNotices under `licenses\`.
 - CTranslate2, Copyright (c) 2018- SYSTRAN / OpenNMT. Linked in `cuda` builds through `ct2rs`.
 
 ```
